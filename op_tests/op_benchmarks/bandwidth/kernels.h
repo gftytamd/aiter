@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <random>
+#include <iostream>
 #include <algorithm>
 #include <type_traits>
 
@@ -67,8 +69,9 @@ __device__ dwordx4_t make_buffer_resource(const void * ptr, uint32_t size) {
     return __builtin_bit_cast(dwordx4_t, res);
 }
 
-__device__ __forceinline__ void do_global_load(float2& reg, const float2* addr) { 
+__device__ __forceinline__ int do_global_load(float2& reg, const float2* addr) { 
     asm volatile("global_load_dwordx2 %0, %1, off" : "=v"(reg) : "v"(addr) : "memory"); 
+    return 1;
 }
 
 __device__ __forceinline__ void do_global_load(float4& reg, const float4* addr) { 
@@ -163,24 +166,36 @@ __global__ void global_load_kernel(const T* in_data, int num_elements_per_block,
     
     T temp_reg{};
     float local_sum = 0.f;
+    int cnt = 0;
 
     for (int i = 0; i < iters; ++i)
     {
         size_t offs = UNROLL_FACTOR * blockDim.x * i + threadIdx.x;
         
-        #pragma unroll
+        // #pragma unroll
         for (int u = 0; u < UNROLL_FACTOR; ++u) {
             size_t aligned_offset = (block_base_offset + offs) * sizeof(T) / sizeof(T);
-            do_global_load(temp_reg, &in_data[aligned_offset]);
+            // cnt += do_global_load(temp_reg, &in_data[0]);
+            temp_reg = in_data[0];
             local_sum += consume(temp_reg);
+            
             offs += blockDim.x;
         }
         asm volatile("s_waitcnt vmcnt(0)");
     }
 
-    if (local_sum > 99999999.f) {
-        g_sum[0] = local_sum;
+    // block_id * block_size + thread_id
+    const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    g_sum[g_sum_offt] = local_sum;
+    if((blockIdx.x == 0) && (threadIdx.x == 0)) {
+        printf("%d %f %f %f\n", cnt, local_sum, in_data[0].x, in_data[0].y);
     }
+    // if(threadIdx.x == 0) {
+    //     printf("%f\n", local_sum);
+    // }
+    // if (local_sum > 99999999.f) {
+    //     g_sum[0] = local_sum;
+    // }
 }
 
 // global_load_dword  nt
