@@ -140,7 +140,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     // check invalid -1 d_sum
     std::vector<float> dut_sum(num_refdata, -1.0);
     HIP_CHECK(hipMemcpyDtoH(static_cast<void*>(dut_sum.data()), d_sum, refdata_size_bytes));
-    std::cout << dut_sum[0] << " " << h_sum[0] << std::endl;
+    std::cout << "host dut vs ref: " << dut_sum[0] << " " << h_sum[0] << std::endl;
     // for (int i = 0; i < dut_sum.size(); i++) {
     //     std::cout << "No: " << i << ", dut sum " << dut_sum[i] << ", ref sum " << h_sum[i] << std::endl;
     //     // if (dut_sum[i] == 0.0) {
