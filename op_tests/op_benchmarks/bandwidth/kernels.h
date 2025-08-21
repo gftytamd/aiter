@@ -162,39 +162,47 @@ template <typename T>
 __global__ void global_load_kernel(const T* in_data, int num_elements_per_block, int iters, float* g_sum)
 {
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
-    
-    T temp_reg{};
     float local_sum = 0.f;
-    int cnt = 0;
-
+    T temp_reg[UNROLL_FACTOR];
+    // T temp_reg;
     for (int i = 0; i < iters; ++i)
     {
         size_t offs = UNROLL_FACTOR * blockDim.x * i + threadIdx.x;
-        
-        // #pragma unroll
+        // T temp_reg[UNROLL_FACTOR];
+        // T temp_reg;
+        #pragma unroll
         for (int u = 0; u < UNROLL_FACTOR; ++u) {
             size_t aligned_offset = (block_base_offset + offs) * sizeof(T) / sizeof(T);
-            // do_global_load(temp_reg, in_data);
-            temp_reg = in_data[0];
-            local_sum += consume(temp_reg);
-            
+            do_global_load(temp_reg[u], &in_data[aligned_offset]);
+            // do_global_load(temp_reg, &in_data[aligned_offset]);
+            // local_sum += consume(temp_reg);
             offs += blockDim.x;
         }
         asm volatile("s_waitcnt vmcnt(0)");
+        // #pragma unroll
+        // for (int u = 0; u < UNROLL_FACTOR; ++u) {
+        //     local_sum += consume(temp_reg[u]);
+        //     // local_sum += consume(temp_reg);
+        // }
+        // asm volatile("s_waitcnt vmcnt(0)");
+    }
+    for (int u = 0; u < UNROLL_FACTOR; ++u) {
+        local_sum += consume(temp_reg[u]);
+        // local_sum += consume(temp_reg);
     }
 
     // block_id * block_size + thread_id
     const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     g_sum[g_sum_offt] = local_sum;
-    if((blockIdx.x < 32) && (threadIdx.x == 0)) {
-        printf("%d %f %f %f %p\n", cnt, local_sum, in_data[0].x, in_data[0].y, in_data);
+    // if((blockIdx.x == 32) && (threadIdx.x == 128)) {
+    //     printf("%f %f %f %f %f %p\n", temp_reg.x, temp_reg.y, local_sum, in_data[0].x, in_data[0].y, in_data);
+    // }
+    if((blockIdx.x == 0) && (threadIdx.x == 0)) {
+        for (int u = 0; u < UNROLL_FACTOR; ++u) {
+            printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum);
+            // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
+        }
     }
-    // if(threadIdx.x == 0) {
-    //     printf("%f\n", local_sum);
-    // }
-    // if (local_sum > 99999999.f) {
-    //     g_sum[0] = local_sum;
-    // }
 }
 
 // global_load_dword  nt

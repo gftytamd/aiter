@@ -21,7 +21,7 @@
 
 | Operation | Data Size (MB) | Bandwidth (GB/s) |
 |-----------|---------------:|----------------:|
-| global_load_dwordx2 (64-bit) | 20.00 | 643.21 |
+| global_load_dwordx2 (64-bit) | 20.00 | 2092.97 |
 
 ### 128-bit Operations
 
