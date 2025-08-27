@@ -27,7 +27,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
 
     const size_t num_elements_per_block = (num_elements_total + grid_size - 1) / grid_size;
     const int iters = (num_elements_per_block + (block_size * UNROLL_FACTOR) - 1) / (block_size * UNROLL_FACTOR);
-    std::cout << "iters: " << iters << std::endl;
+    // std::cout << "iters: " << iters << std::endl;
     const size_t num_elements_aligned = (size_t)grid_size * iters * block_size * UNROLL_FACTOR;
     const size_t data_size_bytes = num_elements_aligned * sizeof(T);
     const size_t num_refdata = (size_t)grid_size * block_size;
@@ -140,7 +140,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     // check invalid -1 d_sum
     std::vector<float> dut_sum(num_refdata, -1.0);
     HIP_CHECK(hipMemcpyDtoH(static_cast<void*>(dut_sum.data()), d_sum, refdata_size_bytes));
-    std::cout << "host dut vs ref: " << dut_sum[0] << " " << h_sum[0] << std::endl;
+    // std::cout << "host dut vs ref: " << dut_sum[0] << " " << h_sum[0] << std::endl;
     // for (int i = 0; i < dut_sum.size(); i++) {
     //     std::cout << "No: " << i << ", dut sum " << dut_sum[i] << ", ref sum " << h_sum[i] << std::endl;
     //     // if (dut_sum[i] == 0.0) {

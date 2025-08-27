@@ -204,13 +204,13 @@ __global__ void global_load_kernel(const T* in_data, int num_elements_per_block,
     // if((blockIdx.x == 32) && (threadIdx.x == 128)) {
     //     printf("%f %f %f %f %f %p\n", temp_reg.x, temp_reg.y, local_sum, in_data[0].x, in_data[0].y, in_data);
     // }
-    if((blockIdx.x == 0) && (threadIdx.x == 0)) {
-        for (int u = 0; u < UNROLL_FACTOR; ++u) {
-            printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum_unroll[u]);
-            // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
-        }
-        printf("%f\n", local_sum);
-    }
+    // if((blockIdx.x == 0) && (threadIdx.x == 0)) {
+    //     for (int u = 0; u < UNROLL_FACTOR; ++u) {
+    //         printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum_unroll[u]);
+    //         // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
+    //     }
+    //     printf("%f\n", local_sum);
+    // }
 }
 
 // global_load_dword  nt
