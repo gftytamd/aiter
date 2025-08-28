@@ -162,10 +162,12 @@ template <typename T>
 __global__ void global_load_kernel(const T* in_data, int num_elements_per_block, int iters, float* g_sum)
 {
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
+    T temp_reg{};
+    // float local_sum = 0.f;
     volatile float local_sum = 0.f;
     // T temp_reg[UNROLL_FACTOR];
     // volatile float local_sum_unroll[UNROLL_FACTOR]{};
-    T temp_reg;
+    
     for (int i = 0; i < iters; ++i)
     {
         size_t offs = UNROLL_FACTOR * blockDim.x * i + threadIdx.x;
