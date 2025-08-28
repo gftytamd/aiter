@@ -162,10 +162,11 @@ template <typename T>
 __global__ void global_load_kernel(const T* in_data, int num_elements_per_block, int iters, float* g_sum)
 {
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
-    T temp_reg{};
+    // T temp_reg{};
     // float local_sum = 0.f;
     volatile float local_sum = 0.f;
-    // T temp_reg[UNROLL_FACTOR];
+    T temp_reg[UNROLL_FACTOR];
+    size_t off_reg[UNROLL_FACTOR]{};
     // volatile float local_sum_unroll[UNROLL_FACTOR]{};
     
     for (int i = 0; i < iters; ++i)
@@ -178,20 +179,22 @@ __global__ void global_load_kernel(const T* in_data, int num_elements_per_block,
         #pragma unroll
         for (int u = 0; u < UNROLL_FACTOR; ++u) {
             size_t aligned_offset = (block_base_offset + offs) * sizeof(T) / sizeof(T);
-            // do_global_load(temp_reg[u], &in_data[aligned_offset]);
+            // do_global_load(temp_reg[u], &in_data[0]);
             // do_global_load(temp_reg, &in_data[0]);
-            // do_global_load(temp_reg[u], &in_data[aligned_offset]);
-            do_global_load(temp_reg, &in_data[aligned_offset]);
-            local_sum += consume(temp_reg);
+            do_global_load(temp_reg[u], &in_data[aligned_offset]);
+            // do_global_load(temp_reg, &in_data[aligned_offset]);
+            // local_sum += consume(temp_reg);
             offs += blockDim.x;
+            off_reg[u] = aligned_offset;
+            
         }
         asm volatile("s_waitcnt vmcnt(0)" ::: "memory");
-        // #pragma unroll
-        // for (int u = 0; u < UNROLL_FACTOR; ++u) {
-        //     local_sum += consume(temp_reg[u]);
-        //     // local_sum += consume(temp_reg);
-        //     // local_sum_unroll[u] += consume(temp_reg[u]);
-        // }
+        #pragma unroll
+        for (int u = 0; u < UNROLL_FACTOR; ++u) {
+            local_sum += consume(temp_reg[u]);
+            // local_sum += consume(temp_reg);
+            // local_sum_unroll[u] += consume(temp_reg[u]);
+        }
         // asm volatile("s_waitcnt vmcnt(0)");
     }
     // for (int u = 0; u < UNROLL_FACTOR; ++u) {
@@ -199,13 +202,14 @@ __global__ void global_load_kernel(const T* in_data, int num_elements_per_block,
     //     local_sum += local_sum_unroll[u];
     //     // local_sum += consume(temp_reg);
     // }
-    // if((blockIdx.x == 0) && (threadIdx.x == 0)) {
-    //     // for (int u = 0; u < UNROLL_FACTOR; ++u) {
-    //     //     printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum_unroll[u]);
-    //     //     // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
-    //     // }
-    //     printf("%f\n", local_sum);
-    // }
+    if((blockIdx.x == 1279) && (threadIdx.x == 1023)) {
+        for (int u = 0; u < UNROLL_FACTOR; ++u) {
+            printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
+            // printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum_unroll[u]);
+            // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
+        }
+        printf("%f %d\n", local_sum, num_elements_per_block);
+    }
     const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     g_sum[g_sum_offt] = local_sum;
     // if((blockIdx.x == 32) && (threadIdx.x == 128)) {

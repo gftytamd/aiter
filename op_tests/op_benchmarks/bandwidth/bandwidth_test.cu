@@ -39,8 +39,10 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     std::vector<float> h_data(num_elements_aligned * stride_per_element, 1.0);
     for (int i = 0; i < h_data.size(); ++i){
         size_t block_id = i / (iters * block_size * UNROLL_FACTOR * stride_per_element);
-        h_data[i] = (i % (block_size * stride_per_element)) * (block_id+1);
+        h_data[i] = ( i % (block_size * stride_per_element) + 1) * (block_id+1);
     }
+    // upper bound index: 1024*2*8*1279+2048*8-1
+    std::cout << "hdata: " << h_data[2048*8*1279+2046] << ", " << h_data[2048*8*1279+2048*8-1] << std::endl;
     // std::vector<float> h_data(data_size_bytes, 1.0);
     // std::random_device rd;
     // std::mt19937 gen(rd());
@@ -48,7 +50,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     // std::generate(h_data.begin(), h_data.end(), [&](){return dist(gen);});
     // host sum generator
     std::vector<float> h_sum(num_refdata, 0.0);
-    std::cout << h_data.size() << std::endl;
+    std::cout << h_data.size() << " " << num_elements_aligned << " " << data_size_bytes << std::endl;
     size_t data_per_block = block_size * iters * UNROLL_FACTOR;
     for (int i = 0; i < num_refdata; ++i) {
         size_t block_id = i / block_size;
@@ -62,6 +64,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
                 for (int l = 0; l < stride_per_element; ++l) {
                     local_sum += h_data[cur_offt+l];
                 }
+                offs += block_size * stride_per_element;
             }
         }
         h_sum[i] = local_sum;
@@ -105,7 +108,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     // warm up
     for(int i = 0; i < WARMUP; i++){
         if constexpr (Op == HFMemOp::GlobalLoad) {
-            global_load_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters, d_sum);
+            global_load_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
         } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
             global_load_nt_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters, d_sum);
         } else if constexpr (Op == HFMemOp::GlobalStore) {
@@ -130,7 +133,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     HIP_CHECK(hipEventRecord(start));
     for(int i = 0; i < LOOP; ++i) {
         if constexpr (Op == HFMemOp::GlobalLoad) {
-            global_load_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters, d_sum);
+            global_load_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
         } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
             global_load_nt_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters, d_sum);
         } else if constexpr (Op == HFMemOp::GlobalStore) {
@@ -172,7 +175,19 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
             ++wrong_cnt;
         }
     }
-    std::cout << "host dut vs ref: " << dut_sum[1024*10+0] << " " << h_sum[1024*10+0] << std::endl;
+    // check d_data vs h_data
+    std::vector<float> dut_data(num_elements_aligned * stride_per_element, 0.0);
+    HIP_CHECK(hipMemcpyDtoH(static_cast<void*>(dut_data.data()), d_data, data_size_bytes));
+    for (int i = 0; i < dut_data.size(); i++) {
+        if(dut_data[i] != h_data[i]) {
+            std::cout << "dut != ref at " << i << ", dut = " << dut_data[i] << ", ref = " << h_data[i] << std::endl;
+            break;
+        }
+    }
+    size_t thread_probe = 1023;
+    size_t block_probe = 1279;
+    size_t test_probe = block_size * block_probe + thread_probe;
+    std::cout << "host dut vs ref: " << dut_sum[test_probe] << " " << h_sum[test_probe] << std::endl;
     std::cout << "data size: " << dut_sum.size() << ", wrong num: " << wrong_cnt << std::endl;
 
     HIP_CHECK(hipEventDestroy(start));
