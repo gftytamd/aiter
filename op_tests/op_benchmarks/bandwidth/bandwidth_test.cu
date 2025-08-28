@@ -37,6 +37,10 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     T* d_data = nullptr;
     // host data generator
     std::vector<float> h_data(num_elements_aligned * stride_per_element, 1.0);
+    for (int i = 0; i < h_data.size(); ++i){
+        size_t block_id = i / (iters * block_size * UNROLL_FACTOR * stride_per_element);
+        h_data[i] = (i % (block_size * stride_per_element)) * (block_id+1);
+    }
     // std::vector<float> h_data(data_size_bytes, 1.0);
     // std::random_device rd;
     // std::mt19937 gen(rd());
@@ -164,11 +168,11 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
         // if (dut_sum[i] != h_sum[i]) {
         if (std::abs(dut_sum[i] - h_sum[i]) > 0.01) {
             // std::cout << "No: " << i << " is 0." << std::endl;
-            std::cout << "No: " << i << " host dut vs ref: " << dut_sum[i] << " " << h_sum[i] << std::endl;
+            // std::cout << "No: " << i << " host dut vs ref: " << dut_sum[i] << " " << h_sum[i] << std::endl;
             ++wrong_cnt;
         }
     }
-    std::cout << "host dut vs ref: " << dut_sum[0] << " " << h_sum[0] << std::endl;
+    std::cout << "host dut vs ref: " << dut_sum[1024*10+0] << " " << h_sum[1024*10+0] << std::endl;
     std::cout << "data size: " << dut_sum.size() << ", wrong num: " << wrong_cnt << std::endl;
 
     HIP_CHECK(hipEventDestroy(start));
