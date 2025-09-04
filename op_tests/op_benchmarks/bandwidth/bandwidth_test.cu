@@ -16,6 +16,12 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     } else if (std::is_same_v<T, float4>) {
         result.vector_width = "128-bit";
     }
+<<<<<<< HEAD
+=======
+
+    // only test with dsum trigger hsum and dsum comp
+    bool compare_sum = (Op == HFMemOp::GlobalLoad) || (Op == HFMemOp::GlobalLoadNT) || (Op == HFMemOp::BufferLoad) || (Op == HFMemOp::DsRead);
+>>>>>>> 757ea6b (TODO: debug load buffer test)
     
     result.size_mb = data_size_dwords * sizeof(float) / (1024.0 * 1024.0);
     
