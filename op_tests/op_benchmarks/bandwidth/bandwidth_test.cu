@@ -16,12 +16,9 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     } else if (std::is_same_v<T, float4>) {
         result.vector_width = "128-bit";
     }
-<<<<<<< HEAD
-=======
 
     // only test with dsum trigger hsum and dsum comp
     bool compare_sum = (Op == HFMemOp::GlobalLoad) || (Op == HFMemOp::GlobalLoadNT) || (Op == HFMemOp::BufferLoad) || (Op == HFMemOp::DsRead);
->>>>>>> 757ea6b (TODO: debug load buffer test)
     
     result.size_mb = data_size_dwords * sizeof(float) / (1024.0 * 1024.0);
     
@@ -36,44 +33,54 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     // std::cout << "iters: " << iters << std::endl;
     const size_t num_elements_aligned = (size_t)grid_size * iters * block_size * UNROLL_FACTOR;
     const size_t data_size_bytes = num_elements_aligned * sizeof(T);
+    const size_t data_per_block = block_size * iters * UNROLL_FACTOR;
     const size_t num_refdata = (size_t)grid_size * block_size;
     const size_t refdata_size_bytes = num_refdata * sizeof(float); // reference data for each thread
     const size_t stride_per_element = (sizeof(T) / sizeof(float));
 
     T* d_data = nullptr;
     // host data generator
-    std::vector<float> h_data(num_elements_aligned * stride_per_element, 1.0);
-    for (int i = 0; i < h_data.size(); ++i){
-        size_t block_id = i / (iters * block_size * UNROLL_FACTOR * stride_per_element);
-        h_data[i] = ( i % (block_size * stride_per_element) + 1) * (block_id+1);
-    }
+    // std::vector<float> h_data(num_elements_aligned * stride_per_element, 1.0);
+    // for (int i = 0; i < h_data.size(); ++i){
+    //     size_t block_id = i / (iters * block_size * UNROLL_FACTOR * stride_per_element);
+    //     h_data[i] = ( i % (block_size * stride_per_element) + 1) * (block_id+1);
+    // }
     // upper bound index: 1024*2*8*1279+2048*8-1
-    std::cout << "hdata: " << h_data[2048*8*1279+2046] << ", " << h_data[2048*8*1279+2048*8-1] << std::endl;
-    // std::vector<float> h_data(data_size_bytes, 1.0);
-    // std::random_device rd;
-    // std::mt19937 gen(rd());
-    // std::uniform_real_distribution<float> dist(0.0, 3.0);
-    // std::generate(h_data.begin(), h_data.end(), [&](){return dist(gen);});
+    // std::cout << "hdata: " << h_data[2048*8*1279+2046] << ", " << h_data[2048*8*1279+2048*8-1] << std::endl;
+    std::vector<float> h_data(data_size_bytes, 1.0);
+    if (compare_sum) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> dist(0.0, 3.0);
+        std::generate(h_data.begin(), h_data.end(), [&](){return dist(gen);});
+    }
+    else {
+        const float ref_array[4] = {1.23f, 2.34f, 3.45f, 4.56f};
+        for (int i = 0; i < h_data.size(); ++i) {
+            h_data[i] = ref_array [i % stride_per_element];
+        }
+    }
+    std::cout << h_data.size() << " " << num_elements_aligned << " " << data_size_bytes << std::endl;
     // host sum generator
     std::vector<float> h_sum(num_refdata, 0.0);
-    std::cout << h_data.size() << " " << num_elements_aligned << " " << data_size_bytes << std::endl;
-    size_t data_per_block = block_size * iters * UNROLL_FACTOR;
-    for (int i = 0; i < num_refdata; ++i) {
-        size_t block_id = i / block_size;
-        size_t thread_id = i % block_size;
-        const size_t block_base_offt = block_id * data_per_block * stride_per_element;
-        float local_sum = 0.0f;
-        for (int j = 0; j < iters; ++j) {
-            size_t offs = UNROLL_FACTOR * block_size * j * stride_per_element + thread_id * stride_per_element;
-            for (int k = 0; k < UNROLL_FACTOR; ++k) {
-                size_t cur_offt = block_base_offt + offs;
-                for (int l = 0; l < stride_per_element; ++l) {
-                    local_sum += h_data[cur_offt+l];
+    if (compare_sum) {
+        for (int i = 0; i < num_refdata; ++i) {
+            size_t block_id = i / block_size;
+            size_t thread_id = i % block_size;
+            const size_t block_base_offt = block_id * data_per_block * stride_per_element;
+            float local_sum = 0.0f;
+            for (int j = 0; j < iters; ++j) {
+                size_t offs = UNROLL_FACTOR * block_size * j * stride_per_element + thread_id * stride_per_element;
+                for (int k = 0; k < UNROLL_FACTOR; ++k) {
+                    size_t cur_offt = block_base_offt + offs;
+                    for (int l = 0; l < stride_per_element; ++l) {
+                        local_sum += h_data[cur_offt+l];
+                    }
+                    offs += block_size * stride_per_element;
                 }
-                offs += block_size * stride_per_element;
             }
+            h_sum[i] = local_sum;
         }
-        h_sum[i] = local_sum;
     }
     // for (int i = 0; i < grid_size; ++i) {
     //     // block data offt
@@ -116,17 +123,17 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
         if constexpr (Op == HFMemOp::GlobalLoad) {
             global_load_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
         } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
-            global_load_nt_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters, d_sum);
+            global_load_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
         } else if constexpr (Op == HFMemOp::GlobalStore) {
-            global_store_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters);
+            global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
         } else if constexpr (Op == HFMemOp::GlobalStoreNT) {
-            global_store_nt_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters);
+            global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
         } else if constexpr (Op == HFMemOp::BufferStore) {
-            buffer_store_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters);
+            buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
         } else if constexpr (Op == HFMemOp::BufferLoad) {  
-            buffer_load_reg_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters, d_sum);
+            buffer_load_reg_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
          }else if constexpr (Op == HFMemOp::BufferLoadLDS) {
-            buffer_load_lds_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters);
+            buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
         } else if constexpr (Op == HFMemOp::DsRead) {    
             size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
             lds_load_kernel<T><<<grid, block, lds_size_bytes>>>(d_data,iters, d_sum);
@@ -141,17 +148,17 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
         if constexpr (Op == HFMemOp::GlobalLoad) {
             global_load_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
         } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
-            global_load_nt_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters, d_sum);
+            global_load_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
         } else if constexpr (Op == HFMemOp::GlobalStore) {
-            global_store_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters);
+            global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
         } else if constexpr (Op == HFMemOp::GlobalStoreNT) {
-            global_store_nt_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters);
+            global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
         } else if constexpr (Op == HFMemOp::BufferStore) {
-            buffer_store_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters);
+            buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
         } else if constexpr (Op == HFMemOp::BufferLoad) {  
-            buffer_load_reg_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters, d_sum);
+            buffer_load_reg_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
          }else if constexpr (Op == HFMemOp::BufferLoadLDS) {
-            buffer_load_lds_kernel<T><<<grid, block>>>(d_data, num_elements_per_block, iters);
+            buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
         } else if constexpr (Op == HFMemOp::DsRead) {    
             lds_load_kernel<T><<<grid, block>>>(d_data, iters, d_sum);
         } else if constexpr (Op == HFMemOp::DsWrite) { 
@@ -169,17 +176,24 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     printf("%-40s: %.2f GB/s\n", test_name.c_str(), result.bandwidth_gb_s);
 
     // check invalid -1 d_sum
-    std::vector<float> dut_sum(num_refdata, -1.0);
-    HIP_CHECK(hipMemcpyDtoH(static_cast<void*>(dut_sum.data()), d_sum, refdata_size_bytes));
-    size_t wrong_cnt = 0;
-    for (int i = 0; i < dut_sum.size(); i++) {
-        // std::cout << "No: " << i << ", dut sum " << dut_sum[i] << ", ref sum " << h_sum[i] << std::endl;
-        // if (dut_sum[i] != h_sum[i]) {
-        if (std::abs(dut_sum[i] - h_sum[i]) > 0.01) {
-            // std::cout << "No: " << i << " is 0." << std::endl;
-            // std::cout << "No: " << i << " host dut vs ref: " << dut_sum[i] << " " << h_sum[i] << std::endl;
-            ++wrong_cnt;
+    if (compare_sum) {
+        std::vector<float> dut_sum(num_refdata, -1.0);
+        HIP_CHECK(hipMemcpyDtoH(static_cast<void*>(dut_sum.data()), d_sum, refdata_size_bytes));
+        size_t wrong_cnt = 0;
+        for (int i = 0; i < dut_sum.size(); i++) {
+            // std::cout << "No: " << i << ", dut sum " << dut_sum[i] << ", ref sum " << h_sum[i] << std::endl;
+            // if (dut_sum[i] != h_sum[i]) {
+            if (std::abs(dut_sum[i] - h_sum[i]) > 0.01) {
+                // std::cout << "No: " << i << " is 0." << std::endl;
+                // std::cout << "No: " << i << " host dut vs ref: " << dut_sum[i] << " " << h_sum[i] << std::endl;
+                ++wrong_cnt;
+            }
         }
+        size_t thread_probe = 1023;
+        size_t block_probe = 1279;
+        size_t test_probe = block_size * block_probe + thread_probe;
+        std::cout << "host dut vs ref: " << dut_sum[test_probe] << " " << h_sum[test_probe] << std::endl;
+        std::cout << "data size: " << dut_sum.size() << ", wrong num: " << wrong_cnt << std::endl;
     }
     // check d_data vs h_data
     std::vector<float> dut_data(num_elements_aligned * stride_per_element, 0.0);
@@ -190,11 +204,6 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
             break;
         }
     }
-    size_t thread_probe = 1023;
-    size_t block_probe = 1279;
-    size_t test_probe = block_size * block_probe + thread_probe;
-    std::cout << "host dut vs ref: " << dut_sum[test_probe] << " " << h_sum[test_probe] << std::endl;
-    std::cout << "data size: " << dut_sum.size() << ", wrong num: " << wrong_cnt << std::endl;
 
     HIP_CHECK(hipEventDestroy(start));
     HIP_CHECK(hipEventDestroy(stop));
@@ -253,8 +262,8 @@ std::vector<BenchmarkResult> run_global_load_test(int num_cu, const std::vector<
 
         results.push_back(run_benchmark_return_result<float2, HFMemOp::GlobalLoad>(
             "global_load_dwordx2 (64-bit)", num_cu, dwords));
-        // results.push_back(run_benchmark_return_result<float4, HFMemOp::GlobalLoad>(
-        //     "global_load_dwordx4 (128-bit)", num_cu, dwords));
+        results.push_back(run_benchmark_return_result<float4, HFMemOp::GlobalLoad>(
+            "global_load_dwordx4 (128-bit)", num_cu, dwords));
     }
     
     write_results_to_file(results, "global_load_results.md", 
@@ -499,7 +508,7 @@ int main(int argc, char* argv[]) {
             "buffer_store", "buffer_load", "buffer_load_lds", "lds_read", "lds_write",
             ""
         };
-    std::string test_name = "global_load";
+    std::string test_name = "lds_write";
     run_all_tests(test_name);
     return 0;
 }

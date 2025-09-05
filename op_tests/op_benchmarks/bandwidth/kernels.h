@@ -202,14 +202,14 @@ __global__ void global_load_kernel(const T* in_data, int num_elements_per_block,
     //     local_sum += local_sum_unroll[u];
     //     // local_sum += consume(temp_reg);
     // }
-    if((blockIdx.x == 1279) && (threadIdx.x == 1023)) {
-        for (int u = 0; u < UNROLL_FACTOR; ++u) {
-            printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
-            // printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum_unroll[u]);
-            // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
-        }
-        printf("%f %d\n", local_sum, num_elements_per_block);
-    }
+    // if((blockIdx.x == 1279) && (threadIdx.x == 1023)) {
+    //     for (int u = 0; u < UNROLL_FACTOR; ++u) {
+    //         printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
+    //         // printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum_unroll[u]);
+    //         // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
+    //     }
+    //     printf("%f %d\n", local_sum, num_elements_per_block);
+    // }
     const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     g_sum[g_sum_offt] = local_sum;
     // if((blockIdx.x == 32) && (threadIdx.x == 128)) {
@@ -225,7 +225,8 @@ __global__ void global_load_nt_kernel(const T* in_data, int num_elements_per_blo
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
     
     T temp_reg{};
-    float local_sum = 0.f;
+    // float local_sum = 0.f;
+    volatile float local_sum = 0.f;
 
     for (int i = 0; i < iters; ++i)
     {
@@ -240,10 +241,12 @@ __global__ void global_load_nt_kernel(const T* in_data, int num_elements_per_blo
         }
         asm volatile("s_waitcnt vmcnt(0)");
     }
+    const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    g_sum[g_sum_offt] = local_sum;
 
-    if (local_sum > 99999999.f) {
-        g_sum[0] = local_sum;
-    }
+    // if (local_sum > 99999999.f) {
+    //     g_sum[0] = local_sum;
+    // }
 }
 
 // global_store_dword
