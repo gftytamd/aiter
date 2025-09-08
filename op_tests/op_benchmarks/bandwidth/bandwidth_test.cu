@@ -60,7 +60,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
             h_data[i] = ref_array [i % stride_per_element];
         }
     }
-    std::cout << h_data.size() << " " << num_elements_aligned << " " << data_size_bytes << std::endl;
+    std::cout << "test info: " << h_data.size() << " " << num_elements_aligned << " " << data_size_bytes << std::endl;
     // host sum generator
     std::vector<float> h_sum(num_refdata, 0.0);
     if (compare_sum) {
@@ -119,7 +119,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     dim3 block(block_size, 1, 1);
 
     // warm up
-    for(int i = 0; i < WARMUP; i++){
+    for(int i = 0; i < 0; i++){
         if constexpr (Op == HFMemOp::GlobalLoad) {
             global_load_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
         } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
@@ -144,7 +144,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     }
 
     HIP_CHECK(hipEventRecord(start));
-    for(int i = 0; i < LOOP; ++i) {
+    for(int i = 0; i < 1; ++i) {
         if constexpr (Op == HFMemOp::GlobalLoad) {
             global_load_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
         } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
@@ -367,8 +367,8 @@ std::vector<BenchmarkResult> run_buffer_load_test(int num_cu, const std::vector<
 
         results.push_back(run_benchmark_return_result<float2, HFMemOp::BufferLoad>(
             "buffer_load_dwordx2 (64-bit)", num_cu, dwords));
-        results.push_back(run_benchmark_return_result<float4, HFMemOp::BufferLoad>(
-            "buffer_load_dwordx4 (128-bit)", num_cu, dwords));
+        // results.push_back(run_benchmark_return_result<float4, HFMemOp::BufferLoad>(
+        //     "buffer_load_dwordx4 (128-bit)", num_cu, dwords));
     }
     
     write_results_to_file(results, "buffer_load_results.md", 
@@ -508,7 +508,7 @@ int main(int argc, char* argv[]) {
             "buffer_store", "buffer_load", "buffer_load_lds", "lds_read", "lds_write",
             ""
         };
-    std::string test_name = "lds_write";
+    std::string test_name = "lds_read";
     run_all_tests(test_name);
     return 0;
 }

@@ -308,8 +308,8 @@ __global__ void buffer_load_reg_kernel(const T* in_data, int num_elements_per_bl
 {
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
     
-    T temp_reg{};
-    float local_sum = 0.f;
+    T temp_reg[UNROLL_FACTOR]{};
+    volatile float local_sum = 0.f;
     
     dwordx4_t src_res = make_buffer_resource(in_data, 0xffffffff);
 
@@ -319,16 +319,29 @@ __global__ void buffer_load_reg_kernel(const T* in_data, int num_elements_per_bl
         
         #pragma unroll
         for (int u = 0; u < UNROLL_FACTOR; ++u) {    
-            buffer_load(temp_reg, src_res, offs, block_base_offset, 0);                   
-            local_sum += consume(temp_reg);
+            buffer_load(temp_reg[u], src_res, offs, block_base_offset, 0);                   
+            // local_sum += consume(temp_reg);
             offs += blockDim.x;
         }
         asm volatile("s_waitcnt vmcnt(0)");
+        #pragma unroll
+        for (int u = 0; u < UNROLL_FACTOR; ++u) {
+            local_sum += consume(temp_reg[u]);
+        }
     }
-
-    if (local_sum > 99999999.f) {
-        g_sum[0] = local_sum;
+    if((blockIdx.x == 1279) && (threadIdx.x == 1023)) {
+        for (int u = 0; u < UNROLL_FACTOR; ++u) {
+            // printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
+            printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum);
+            // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
+        }
+        printf("%f %d\n", local_sum, num_elements_per_block);
     }
+    const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    g_sum[g_sum_offt] = local_sum;
+    // if (local_sum > 99999999.f) {
+    //     g_sum[0] = local_sum;
+    // }
 }
 
 // reg -> buffer, buffer_store_dword
@@ -401,7 +414,7 @@ __global__ void lds_load_kernel(const T* in_data, int iters, float* g_sum)
     const size_t tid = threadIdx.x;
  
     T temp_reg{};
-    float local_sum = 0.f;
+    volatile float local_sum = 0.f;
     
     for (int i = 0; i < iters; ++i)
     {
@@ -416,10 +429,11 @@ __global__ void lds_load_kernel(const T* in_data, int iters, float* g_sum)
         }
         asm volatile("s_waitcnt lgkmcnt(0)");
     }
-    
-    if (local_sum > 99999999.f) {
-        g_sum[0] = local_sum;
-    }
+    const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    g_sum[g_sum_offt] = local_sum;
+    // if (local_sum > 99999999.f) {
+    //     g_sum[0] = local_sum;
+    // }
 }
 
 template <typename T>
