@@ -41,18 +41,18 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     T* d_data = nullptr;
     // host data generator
     // std::vector<float> h_data(num_elements_aligned * stride_per_element, 1.0);
-    // for (int i = 0; i < h_data.size(); ++i){
-    //     size_t block_id = i / (iters * block_size * UNROLL_FACTOR * stride_per_element);
-    //     h_data[i] = ( i % (block_size * stride_per_element) + 1) * (block_id+1);
-    // }
     // upper bound index: 1024*2*8*1279+2048*8-1
     // std::cout << "hdata: " << h_data[2048*8*1279+2046] << ", " << h_data[2048*8*1279+2048*8-1] << std::endl;
-    std::vector<float> h_data(data_size_bytes, 1.0);
+    std::vector<float> h_data(num_elements_aligned * stride_per_element, 1.0);
     if (compare_sum) {
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> dist(0.0, 3.0);
-        std::generate(h_data.begin(), h_data.end(), [&](){return dist(gen);});
+        for (int i = 0; i < h_data.size(); ++i){
+            size_t block_id = i / (iters * block_size * UNROLL_FACTOR * stride_per_element);
+            h_data[i] = ( i % (block_size * stride_per_element) + 1) * (block_id+1);
+        }
+        // std::random_device rd;
+        // std::mt19937 gen(rd());
+        // std::uniform_real_distribution<float> dist(0.0, 3.0);
+        // std::generate(h_data.begin(), h_data.end(), [&](){return dist(gen);});
     }
     else {
         const float ref_array[4] = {1.23f, 2.34f, 3.45f, 4.56f};
@@ -74,8 +74,12 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
                 for (int k = 0; k < UNROLL_FACTOR; ++k) {
                     size_t cur_offt = block_base_offt + offs;
                     for (int l = 0; l < stride_per_element; ++l) {
-                        local_sum += h_data[cur_offt+l];
+                        auto cur_data = h_data[cur_offt+l];
+                        local_sum += cur_data;
+                        if(i == block_size * block_probe+thread_probe) {std::cout << cur_data << " ";}
+                        // local_sum += h_data[cur_offt+l];
                     }
+                    if(i == block_size * block_probe+thread_probe) {std::cout << std::endl;}
                     offs += block_size * stride_per_element;
                 }
             }
@@ -189,8 +193,7 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
                 ++wrong_cnt;
             }
         }
-        size_t thread_probe = 1023;
-        size_t block_probe = 1279;
+        
         size_t test_probe = block_size * block_probe + thread_probe;
         std::cout << "host dut vs ref: " << dut_sum[test_probe] << " " << h_sum[test_probe] << std::endl;
         std::cout << "data size: " << dut_sum.size() << ", wrong num: " << wrong_cnt << std::endl;
@@ -198,12 +201,15 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     // check d_data vs h_data
     std::vector<float> dut_data(num_elements_aligned * stride_per_element, 0.0);
     HIP_CHECK(hipMemcpyDtoH(static_cast<void*>(dut_data.data()), d_data, data_size_bytes));
+    bool data_coherency = true;
     for (int i = 0; i < dut_data.size(); i++) {
         if(dut_data[i] != h_data[i]) {
             std::cout << "dut != ref at " << i << ", dut = " << dut_data[i] << ", ref = " << h_data[i] << std::endl;
+            data_coherency = false;
             break;
         }
     }
+    if(data_coherency) {std::cout << "h_data vs d_data is the same" << std::endl;}
 
     HIP_CHECK(hipEventDestroy(start));
     HIP_CHECK(hipEventDestroy(stop));
@@ -408,8 +414,8 @@ std::vector<BenchmarkResult> run_lds_read_test(int num_cu, const std::vector<int
 
         results.push_back(run_benchmark_return_result<float2, HFMemOp::DsRead>(
             "ds_read_b64 (64-bit)", num_cu, dwords));
-        results.push_back(run_benchmark_return_result<float4, HFMemOp::DsRead>(
-            "ds_read_b128 (128-bit)", num_cu, dwords));
+        // results.push_back(run_benchmark_return_result<float4, HFMemOp::DsRead>(
+        //     "ds_read_b128 (128-bit)", num_cu, dwords));
     }
     
     write_results_to_file(results, "lds_Read_results.md", 
@@ -458,9 +464,9 @@ void run_all_tests(const std::string& test_name = "") {
 
     std::vector<int64_t> lds_data_sizes = {
     static_cast<int64_t>(64) * num_cu * BLOCK_SIZE,
-    static_cast<int64_t>(4096) * num_cu * BLOCK_SIZE,
-    static_cast<int64_t>(10240) * num_cu * BLOCK_SIZE,
-    static_cast<int64_t>(20480) * num_cu * BLOCK_SIZE
+    // static_cast<int64_t>(4096) * num_cu * BLOCK_SIZE,
+    // static_cast<int64_t>(10240) * num_cu * BLOCK_SIZE,
+    // static_cast<int64_t>(20480) * num_cu * BLOCK_SIZE
 };
 
     if (test_name.empty() || test_name == "global_load") {
@@ -508,7 +514,7 @@ int main(int argc, char* argv[]) {
             "buffer_store", "buffer_load", "buffer_load_lds", "lds_read", "lds_write",
             ""
         };
-    std::string test_name = "lds_read";
+    std::string test_name = "global_load";
     run_all_tests(test_name);
     return 0;
 }

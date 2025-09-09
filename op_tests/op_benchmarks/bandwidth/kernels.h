@@ -27,6 +27,8 @@ constexpr int UNROLL_FACTOR = 8;
 constexpr int OCCUPANCY_PER_CU = 16; 
 constexpr int WARMUP = 25;
 constexpr int LOOP = 100;
+constexpr size_t thread_probe = 0;
+constexpr size_t block_probe = 1;
 
 
 enum class HFMemOp { 
@@ -202,10 +204,10 @@ __global__ void global_load_kernel(const T* in_data, int num_elements_per_block,
     //     local_sum += local_sum_unroll[u];
     //     // local_sum += consume(temp_reg);
     // }
-    // if((blockIdx.x == 1279) && (threadIdx.x == 1023)) {
+    // if((blockIdx.x == block_probe) && (threadIdx.x == thread_probe)) {
     //     for (int u = 0; u < UNROLL_FACTOR; ++u) {
-    //         printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
-    //         // printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum_unroll[u]);
+    //         // printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
+    //         printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum);
     //         // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
     //     }
     //     printf("%f %d\n", local_sum, num_elements_per_block);
@@ -329,7 +331,7 @@ __global__ void buffer_load_reg_kernel(const T* in_data, int num_elements_per_bl
             local_sum += consume(temp_reg[u]);
         }
     }
-    if((blockIdx.x == 1279) && (threadIdx.x == 1023)) {
+    if((blockIdx.x == block_probe) && (threadIdx.x == thread_probe)) {
         for (int u = 0; u < UNROLL_FACTOR; ++u) {
             // printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
             printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum);
@@ -413,7 +415,7 @@ __global__ void lds_load_kernel(const T* in_data, int iters, float* g_sum)
     
     const size_t tid = threadIdx.x;
  
-    T temp_reg{};
+    T temp_reg[UNROLL_FACTOR]{};
     volatile float local_sum = 0.f;
     
     for (int i = 0; i < iters; ++i)
@@ -422,12 +424,20 @@ __global__ void lds_load_kernel(const T* in_data, int iters, float* g_sum)
         
         #pragma unroll
         for (int u = 0; u < UNROLL_FACTOR; ++u) {
-            uint32_t addr_lo = offs & 0xFFFF;
-            do_lds_read(temp_reg, addr_lo);    
-            local_sum += consume(temp_reg);
+            uint32_t addr_lo = offs & 0xFFFF; // TODO: possible bug
+            do_lds_read(temp_reg[u], addr_lo);    
+            local_sum += consume(temp_reg[u]);
             offs += blockDim.x;
         }
         asm volatile("s_waitcnt lgkmcnt(0)");
+    }
+    if((blockIdx.x == block_probe) && (threadIdx.x == thread_probe)) {
+        for (int u = 0; u < UNROLL_FACTOR; ++u) {
+            // printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
+            printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum);
+            // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
+        }
+        // printf("%f %d\n", local_sum, num_elements_per_block);
     }
     const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     g_sum[g_sum_offt] = local_sum;
@@ -456,7 +466,7 @@ __global__ void lds_write_kernel(T* out_data,  int iters)
         
         #pragma unroll
         for (int u = 0; u < UNROLL_FACTOR; ++u) {
-            uint32_t addr_lo = offs & 0xFFFF;
+            uint32_t addr_lo = offs & 0xFFFF; // TODO: possible bug
             do_lds_write(addr_lo, reg);
             offs += blockDim.x;
         }
