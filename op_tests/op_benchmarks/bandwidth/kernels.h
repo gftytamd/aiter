@@ -165,13 +165,13 @@ template <> __device__ __forceinline__ float consume<float4>(const float4& v) { 
 
 
 // global_load_dword
-template <typename T>
+template <typename T, TestT type>
 __global__ void global_load_kernel(const T* in_data, int num_elements_per_block, int iters, float* g_sum)
 {
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
     T temp_reg{};
-    volatile float local_sum = 0.f;
-    // float local_sum = 0.f;
+    using LocalSumT = std::conditional_t<type == TestT::Correctness, volatile float, float>;
+    LocalSumT local_sum = 0.f;
     
     for (int i = 0; i < iters; ++i)
     {
@@ -188,12 +188,18 @@ __global__ void global_load_kernel(const T* in_data, int num_elements_per_block,
         }
         asm volatile("s_waitcnt vmcnt(0)" ::: "memory");
     }
-    const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-    g_sum[g_sum_offt] = local_sum;
 
-    // if (local_sum > 99999999.f) {
-    //     g_sum[0] = local_sum;
-    // }
+    if constexpr(type == TestT::Correctness) {
+        const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+        g_sum[g_sum_offt] = local_sum;
+    } else {
+        if (local_sum > 99999999.f) {
+            g_sum[0] = local_sum;
+        }
+    }
+    
+
+    
     
 }
 

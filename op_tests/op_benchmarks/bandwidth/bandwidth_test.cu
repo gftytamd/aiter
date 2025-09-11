@@ -4,7 +4,7 @@
 #include "kernels.h"
 
 template <typename T, HFMemOp Op>
-BenchmarkResult run_benchmark_return_result(const std::string& test_name, int num_cu, int64_t data_size_dwords)
+BenchmarkResult run_benchmark_return_result(const std::string& test_name, int num_cu, int64_t data_size_dwords, const TestT type)
 {
     BenchmarkResult result;
     result.operation = test_name;
@@ -120,50 +120,62 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
 
     // warm up
     for(int i = 0; i < WARMUP; i++){
-        if constexpr (Op == HFMemOp::GlobalLoad) {
-            global_load_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-        } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
-            global_load_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-        } else if constexpr (Op == HFMemOp::GlobalStore) {
-            global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::GlobalStoreNT) {
-            global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::BufferStore) {
-            buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::BufferLoad) {  
-            buffer_load_reg_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-         }else if constexpr (Op == HFMemOp::BufferLoadLDS) {
-            buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::DsRead) {    
-            size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
-            lds_load_kernel<T><<<grid, block, lds_size_bytes>>>(d_data,iters, d_sum);
-        } else if constexpr (Op == HFMemOp::DsWrite) { 
-            size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
-            lds_write_kernel<T><<<grid, block, lds_size_bytes>>>(d_data, iters);
+        if (Op == HFMemOp::GlobalLoad) {
+            if (type == TestT::Correctness) {
+                global_load_kernel<T, TestT::Correctness><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+            }
+            else {
+                global_load_kernel<T, TestT::Bandwidth><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+            }
         }
+        // } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
+        //     global_load_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+        // } else if constexpr (Op == HFMemOp::GlobalStore) {
+        //     global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::GlobalStoreNT) {
+        //     global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::BufferStore) {
+        //     buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::BufferLoad) {  
+        //     buffer_load_reg_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+        //  }else if constexpr (Op == HFMemOp::BufferLoadLDS) {
+        //     buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::DsRead) {    
+        //     size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
+        //     lds_load_kernel<T><<<grid, block, lds_size_bytes>>>(d_data,iters, d_sum);
+        // } else if constexpr (Op == HFMemOp::DsWrite) { 
+        //     size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
+        //     lds_write_kernel<T><<<grid, block, lds_size_bytes>>>(d_data, iters);
+        // }
     }
 
     HIP_CHECK(hipEventRecord(start));
     for(int i = 0; i < LOOP; ++i) {
         if constexpr (Op == HFMemOp::GlobalLoad) {
-            global_load_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-        } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
-            global_load_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-        } else if constexpr (Op == HFMemOp::GlobalStore) {
-            global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::GlobalStoreNT) {
-            global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::BufferStore) {
-            buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::BufferLoad) {  
-            buffer_load_reg_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-         }else if constexpr (Op == HFMemOp::BufferLoadLDS) {
-            buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::DsRead) {    
-            lds_load_kernel<T><<<grid, block>>>(d_data, iters, d_sum);
-        } else if constexpr (Op == HFMemOp::DsWrite) { 
-            lds_write_kernel<T><<<grid, block>>>(d_data,  iters);
+            if (type == TestT::Correctness) {
+                global_load_kernel<T, TestT::Correctness><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+            }
+            else {
+                global_load_kernel<T, TestT::Bandwidth><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+            }
         }
+        // } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
+        //     global_load_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+        // } else if constexpr (Op == HFMemOp::GlobalStore) {
+        //     global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::GlobalStoreNT) {
+        //     global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::BufferStore) {
+        //     buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::BufferLoad) {  
+        //     buffer_load_reg_kernel<T><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+        //  }else if constexpr (Op == HFMemOp::BufferLoadLDS) {
+        //     buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::DsRead) {    
+        //     lds_load_kernel<T><<<grid, block>>>(d_data, iters, d_sum);
+        // } else if constexpr (Op == HFMemOp::DsWrite) { 
+        //     lds_write_kernel<T><<<grid, block>>>(d_data,  iters);
+        // }
     }
     HIP_CHECK(hipEventRecord(stop));
     HIP_CHECK(hipEventSynchronize(stop));
@@ -254,7 +266,7 @@ void write_results_to_file(const std::vector<BenchmarkResult>& results, const st
     fclose(md_file);
 }
 
-std::vector<BenchmarkResult> run_global_load_test(int num_cu, const std::vector<int64_t>& data_sizes) {
+std::vector<BenchmarkResult> run_global_load_test(int num_cu, const std::vector<int64_t>& data_sizes, const TestT type) {
     std::vector<BenchmarkResult> results;
     printf("\n--- Running Global Load (Cached) Memory Bandwidth Test ---\n");
     
@@ -263,9 +275,9 @@ std::vector<BenchmarkResult> run_global_load_test(int num_cu, const std::vector<
         printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
 
         results.push_back(run_benchmark_return_result<float2, HFMemOp::GlobalLoad>(
-            "global_load_dwordx2 (64-bit)", num_cu, dwords));
+            "global_load_dwordx2 (64-bit)", num_cu, dwords, type));
         results.push_back(run_benchmark_return_result<float4, HFMemOp::GlobalLoad>(
-            "global_load_dwordx4 (128-bit)", num_cu, dwords));
+            "global_load_dwordx4 (128-bit)", num_cu, dwords, type));
     }
     
     write_results_to_file(results, "global_load_results.md", 
@@ -275,172 +287,172 @@ std::vector<BenchmarkResult> run_global_load_test(int num_cu, const std::vector<
     return results;
 }
 
-std::vector<BenchmarkResult> run_global_load_nt_test(int num_cu, const std::vector<int64_t>& data_sizes) {
-    std::vector<BenchmarkResult> results;
-    printf("\n--- Running Global Load Non-Temporal Memory Bandwidth Test ---\n");
+// std::vector<BenchmarkResult> run_global_load_nt_test(int num_cu, const std::vector<int64_t>& data_sizes) {
+//     std::vector<BenchmarkResult> results;
+//     printf("\n--- Running Global Load Non-Temporal Memory Bandwidth Test ---\n");
     
-    for (int64_t dwords : data_sizes) {
-        double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
-        printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
+//     for (int64_t dwords : data_sizes) {
+//         double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
+//         printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
 
-        results.push_back(run_benchmark_return_result<float2, HFMemOp::GlobalLoadNT>(
-            "global_load_dwordx2_nt (64-bit)", num_cu, dwords));
-        results.push_back(run_benchmark_return_result<float4, HFMemOp::GlobalLoadNT>(
-            "global_load_dwordx4_nt (128-bit)", num_cu, dwords));
-    }
+//         results.push_back(run_benchmark_return_result<float2, HFMemOp::GlobalLoadNT>(
+//             "global_load_dwordx2_nt (64-bit)", num_cu, dwords));
+//         results.push_back(run_benchmark_return_result<float4, HFMemOp::GlobalLoadNT>(
+//             "global_load_dwordx4_nt (128-bit)", num_cu, dwords));
+//     }
     
-    write_results_to_file(results, "global_load_nt_results.md", 
-                          "Global Load Non-Temporal Bandwidth Test Results", 
-                          /*props=*/{}, num_cu);
+//     write_results_to_file(results, "global_load_nt_results.md", 
+//                           "Global Load Non-Temporal Bandwidth Test Results", 
+//                           /*props=*/{}, num_cu);
     
-    return results;
-}
+//     return results;
+// }
 
-std::vector<BenchmarkResult> run_global_store_test(int num_cu, const std::vector<int64_t>& data_sizes) {
-    std::vector<BenchmarkResult> results;
-    printf("\n--- Running Global Store Memory Bandwidth Test ---\n");
+// std::vector<BenchmarkResult> run_global_store_test(int num_cu, const std::vector<int64_t>& data_sizes) {
+//     std::vector<BenchmarkResult> results;
+//     printf("\n--- Running Global Store Memory Bandwidth Test ---\n");
     
-    for (int64_t dwords : data_sizes) {
-        double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
-        printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
+//     for (int64_t dwords : data_sizes) {
+//         double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
+//         printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
 
-        results.push_back(run_benchmark_return_result<float2, HFMemOp::GlobalStore>(
-            "global_store_dwordx2 (64-bit)", num_cu, dwords));
-        results.push_back(run_benchmark_return_result<float4, HFMemOp::GlobalStore>(
-            "global_store_dwordx4 (128-bit)", num_cu, dwords));
-    }
+//         results.push_back(run_benchmark_return_result<float2, HFMemOp::GlobalStore>(
+//             "global_store_dwordx2 (64-bit)", num_cu, dwords));
+//         results.push_back(run_benchmark_return_result<float4, HFMemOp::GlobalStore>(
+//             "global_store_dwordx4 (128-bit)", num_cu, dwords));
+//     }
     
-    write_results_to_file(results, "global_store_results.md", 
-                          "Global Store Bandwidth Test Results", 
-                          /*props=*/{}, num_cu);
+//     write_results_to_file(results, "global_store_results.md", 
+//                           "Global Store Bandwidth Test Results", 
+//                           /*props=*/{}, num_cu);
     
-    return results;
-}
+//     return results;
+// }
 
-std::vector<BenchmarkResult> run_global_store_nt_test(int num_cu, const std::vector<int64_t>& data_sizes) {
-    std::vector<BenchmarkResult> results;
-    printf("\n--- Running Global Store Non-Temporal Memory Bandwidth Test ---\n");
+// std::vector<BenchmarkResult> run_global_store_nt_test(int num_cu, const std::vector<int64_t>& data_sizes) {
+//     std::vector<BenchmarkResult> results;
+//     printf("\n--- Running Global Store Non-Temporal Memory Bandwidth Test ---\n");
     
-    for (int64_t dwords : data_sizes) {
-        double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
-        printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
+//     for (int64_t dwords : data_sizes) {
+//         double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
+//         printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
 
-        results.push_back(run_benchmark_return_result<float2, HFMemOp::GlobalStoreNT>(
-            "global_store_dwordx2_nt (64-bit)", num_cu, dwords));
-        results.push_back(run_benchmark_return_result<float4, HFMemOp::GlobalStoreNT>(
-            "global_store_dwordx4_nt (128-bit)", num_cu, dwords));
-    }
+//         results.push_back(run_benchmark_return_result<float2, HFMemOp::GlobalStoreNT>(
+//             "global_store_dwordx2_nt (64-bit)", num_cu, dwords));
+//         results.push_back(run_benchmark_return_result<float4, HFMemOp::GlobalStoreNT>(
+//             "global_store_dwordx4_nt (128-bit)", num_cu, dwords));
+//     }
     
-    write_results_to_file(results, "global_store_nt_results.md", 
-                          "Global Store Non-Temporal Bandwidth Test Results", 
-                          /*props=*/{}, num_cu);
+//     write_results_to_file(results, "global_store_nt_results.md", 
+//                           "Global Store Non-Temporal Bandwidth Test Results", 
+//                           /*props=*/{}, num_cu);
     
-    return results;
-}
+//     return results;
+// }
 
-std::vector<BenchmarkResult> run_buffer_store_test(int num_cu, const std::vector<int64_t>& data_sizes) {
-    std::vector<BenchmarkResult> results;
-    printf("\n--- Running Buffer Store Memory Bandwidth Test ---\n");
+// std::vector<BenchmarkResult> run_buffer_store_test(int num_cu, const std::vector<int64_t>& data_sizes) {
+//     std::vector<BenchmarkResult> results;
+//     printf("\n--- Running Buffer Store Memory Bandwidth Test ---\n");
     
-    for (int64_t dwords : data_sizes) {
-        double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
-        printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
+//     for (int64_t dwords : data_sizes) {
+//         double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
+//         printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
 
-        results.push_back(run_benchmark_return_result<float2, HFMemOp::BufferStore>(
-            "buffer_store_dwordx2 (64-bit)", num_cu, dwords));
-        results.push_back(run_benchmark_return_result<float4, HFMemOp::BufferStore>(
-            "buffer_store_dwordx4 (128-bit)", num_cu, dwords));
-    }
+//         results.push_back(run_benchmark_return_result<float2, HFMemOp::BufferStore>(
+//             "buffer_store_dwordx2 (64-bit)", num_cu, dwords));
+//         results.push_back(run_benchmark_return_result<float4, HFMemOp::BufferStore>(
+//             "buffer_store_dwordx4 (128-bit)", num_cu, dwords));
+//     }
     
-    write_results_to_file(results, "buffer_store_results.md", 
-                          "Buffer Store Bandwidth Test Results", 
-                          /*props=*/{}, num_cu);
+//     write_results_to_file(results, "buffer_store_results.md", 
+//                           "Buffer Store Bandwidth Test Results", 
+//                           /*props=*/{}, num_cu);
     
-    return results;
-}
+//     return results;
+// }
 
-std::vector<BenchmarkResult> run_buffer_load_test(int num_cu, const std::vector<int64_t>& data_sizes) {
-    std::vector<BenchmarkResult> results;
-    printf("\n--- Running Buffer Load Memory Bandwidth Test ---\n");
+// std::vector<BenchmarkResult> run_buffer_load_test(int num_cu, const std::vector<int64_t>& data_sizes) {
+//     std::vector<BenchmarkResult> results;
+//     printf("\n--- Running Buffer Load Memory Bandwidth Test ---\n");
     
-    for (int64_t dwords : data_sizes) {
-        double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
-        printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
+//     for (int64_t dwords : data_sizes) {
+//         double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
+//         printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
 
-        results.push_back(run_benchmark_return_result<float2, HFMemOp::BufferLoad>(
-            "buffer_load_dwordx2 (64-bit)", num_cu, dwords));
-        results.push_back(run_benchmark_return_result<float4, HFMemOp::BufferLoad>(
-            "buffer_load_dwordx4 (128-bit)", num_cu, dwords));
-    }
+//         results.push_back(run_benchmark_return_result<float2, HFMemOp::BufferLoad>(
+//             "buffer_load_dwordx2 (64-bit)", num_cu, dwords));
+//         results.push_back(run_benchmark_return_result<float4, HFMemOp::BufferLoad>(
+//             "buffer_load_dwordx4 (128-bit)", num_cu, dwords));
+//     }
     
-    write_results_to_file(results, "buffer_load_results.md", 
-                          "Buffer Load Bandwidth Test Results", 
-                          /*props=*/{}, num_cu);
+//     write_results_to_file(results, "buffer_load_results.md", 
+//                           "Buffer Load Bandwidth Test Results", 
+//                           /*props=*/{}, num_cu);
     
-    return results;
-}
+//     return results;
+// }
 
-std::vector<BenchmarkResult> run_buffer_load_lds_test(int num_cu, const std::vector<int64_t>& data_sizes) {
-    std::vector<BenchmarkResult> results;
-    printf("\n--- Running Buffer Load LDS Memory Bandwidth Test ---\n");
+// std::vector<BenchmarkResult> run_buffer_load_lds_test(int num_cu, const std::vector<int64_t>& data_sizes) {
+//     std::vector<BenchmarkResult> results;
+//     printf("\n--- Running Buffer Load LDS Memory Bandwidth Test ---\n");
     
-    for (int64_t dwords : data_sizes) {
-        double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
-        printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
+//     for (int64_t dwords : data_sizes) {
+//         double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
+//         printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
 
-        results.push_back(run_benchmark_return_result<float, HFMemOp::BufferLoadLDS>(
-            "buffer_load_dword (32-bit)", num_cu, dwords));
-    }
+//         results.push_back(run_benchmark_return_result<float, HFMemOp::BufferLoadLDS>(
+//             "buffer_load_dword (32-bit)", num_cu, dwords));
+//     }
     
-    write_results_to_file(results, "buffer_load_lds_results.md", 
-                          "Buffer Load LDS Bandwidth Test Results", 
-                          /*props=*/{}, num_cu);
+//     write_results_to_file(results, "buffer_load_lds_results.md", 
+//                           "Buffer Load LDS Bandwidth Test Results", 
+//                           /*props=*/{}, num_cu);
     
-    return results;
-}
+//     return results;
+// }
 
 
-std::vector<BenchmarkResult> run_lds_read_test(int num_cu, const std::vector<int64_t>& data_sizes) {
-    std::vector<BenchmarkResult> results;
-    printf("\n--- Running LDS Read Memory Bandwidth Test ---\n");
+// std::vector<BenchmarkResult> run_lds_read_test(int num_cu, const std::vector<int64_t>& data_sizes) {
+//     std::vector<BenchmarkResult> results;
+//     printf("\n--- Running LDS Read Memory Bandwidth Test ---\n");
     
-    for (int64_t dwords : data_sizes) {
-        double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
-        printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
+//     for (int64_t dwords : data_sizes) {
+//         double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
+//         printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
 
-        results.push_back(run_benchmark_return_result<float2, HFMemOp::DsRead>(
-            "ds_read_b64 (64-bit)", num_cu, dwords));
-        results.push_back(run_benchmark_return_result<float4, HFMemOp::DsRead>(
-            "ds_read_b128 (128-bit)", num_cu, dwords));
-    }
+//         results.push_back(run_benchmark_return_result<float2, HFMemOp::DsRead>(
+//             "ds_read_b64 (64-bit)", num_cu, dwords));
+//         results.push_back(run_benchmark_return_result<float4, HFMemOp::DsRead>(
+//             "ds_read_b128 (128-bit)", num_cu, dwords));
+//     }
     
-    write_results_to_file(results, "lds_Read_results.md", 
-                          "LDS Read Bandwidth Test Results", 
-                          /*props=*/{}, num_cu);
+//     write_results_to_file(results, "lds_Read_results.md", 
+//                           "LDS Read Bandwidth Test Results", 
+//                           /*props=*/{}, num_cu);
     
-    return results;
-}
+//     return results;
+// }
 
-std::vector<BenchmarkResult> run_lds_write_test(int num_cu, const std::vector<int64_t>& data_sizes) {
-    std::vector<BenchmarkResult> results;
-    printf("\n--- Running LDS Write Memory Bandwidth Test ---\n");
+// std::vector<BenchmarkResult> run_lds_write_test(int num_cu, const std::vector<int64_t>& data_sizes) {
+//     std::vector<BenchmarkResult> results;
+//     printf("\n--- Running LDS Write Memory Bandwidth Test ---\n");
     
-    for (int64_t dwords : data_sizes) {
-        double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
-        printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
+//     for (int64_t dwords : data_sizes) {
+//         double size_mb = dwords * sizeof(float) / (1024.0 * 1024.0);
+//         printf("\n--- Testing with data size: %.2f MB ---\n", size_mb);
 
-        results.push_back(run_benchmark_return_result<float2, HFMemOp::DsWrite>(
-            "ds_write_b64 (64-bit)", num_cu, dwords));
-        results.push_back(run_benchmark_return_result<float4, HFMemOp::DsWrite>(
-            "ds_write_b128 (128-bit)", num_cu, dwords));
-    }
+//         results.push_back(run_benchmark_return_result<float2, HFMemOp::DsWrite>(
+//             "ds_write_b64 (64-bit)", num_cu, dwords));
+//         results.push_back(run_benchmark_return_result<float4, HFMemOp::DsWrite>(
+//             "ds_write_b128 (128-bit)", num_cu, dwords));
+//     }
     
-    write_results_to_file(results, "lds_Write_results.md", 
-                          "LDS Write Bandwidth Test Results", 
-                          /*props=*/{}, num_cu);
+//     write_results_to_file(results, "lds_Write_results.md", 
+//                           "LDS Write Bandwidth Test Results", 
+//                           /*props=*/{}, num_cu);
     
-    return results;
-}
+//     return results;
+// }
 
 void run_all_tests(const std::string& test_name = "", bool test_correctness = false) {
     hipDeviceProp_t props;
@@ -468,40 +480,40 @@ void run_all_tests(const std::string& test_name = "", bool test_correctness = fa
     TestT type = test_correctness ? TestT::Correctness : TestT::Bandwidth;
 
     if (test_name.empty() || test_name == "global_load") {
-        run_global_load_test(num_cu, data_sizes);
+        run_global_load_test(num_cu, data_sizes, type);
     }
     
-    if (test_name.empty() || test_name == "global_load_nt") {
-        run_global_load_nt_test(num_cu, data_sizes);
-    }
+    // if (test_name.empty() || test_name == "global_load_nt") {
+    //     run_global_load_nt_test(num_cu, data_sizes);
+    // }
     
-    if (test_name.empty() || test_name == "global_store") {
-        run_global_store_test(num_cu, data_sizes);
-    }
+    // if (test_name.empty() || test_name == "global_store") {
+    //     run_global_store_test(num_cu, data_sizes);
+    // }
     
-    if (test_name.empty() || test_name == "global_store_nt") {
-        run_global_store_nt_test(num_cu, data_sizes);
-    }
+    // if (test_name.empty() || test_name == "global_store_nt") {
+    //     run_global_store_nt_test(num_cu, data_sizes);
+    // }
     
-    if (test_name.empty() || test_name == "buffer_load") {
-        run_buffer_load_test(num_cu, data_sizes);
-    }
+    // if (test_name.empty() || test_name == "buffer_load") {
+    //     run_buffer_load_test(num_cu, data_sizes);
+    // }
     
-    if (test_name.empty() || test_name == "buffer_store") {
-        run_buffer_store_test(num_cu, data_sizes);
-    }
+    // if (test_name.empty() || test_name == "buffer_store") {
+    //     run_buffer_store_test(num_cu, data_sizes);
+    // }
     
-    if (test_name.empty() || test_name == "buffer_load_lds") {
-        run_buffer_load_lds_test(num_cu, data_sizes);
-    }
+    // if (test_name.empty() || test_name == "buffer_load_lds") {
+    //     run_buffer_load_lds_test(num_cu, data_sizes);
+    // }
     
-    if (test_name.empty() || test_name == "lds_read") {
-        run_lds_read_test(num_cu, lds_data_sizes);
-    }
+    // if (test_name.empty() || test_name == "lds_read") {
+    //     run_lds_read_test(num_cu, lds_data_sizes);
+    // }
     
-    if (test_name.empty() || test_name == "lds_write") {
-        run_lds_write_test(num_cu, lds_data_sizes);
-    }
+    // if (test_name.empty() || test_name == "lds_write") {
+    //     run_lds_write_test(num_cu, lds_data_sizes);
+    // }
 
 }
 
@@ -513,7 +525,7 @@ int main(int argc, char* argv[]) {
             ""
         };
     std::string test_name = "global_load";
-    bool correctness_check = false;
+    bool correctness_check = true;
     run_all_tests(test_name, correctness_check);
     return 0;
 }
