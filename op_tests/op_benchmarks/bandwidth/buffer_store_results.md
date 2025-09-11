@@ -21,17 +21,17 @@
 
 | Operation | Data Size (MB) | Bandwidth (GB/s) |
 |-----------|---------------:|----------------:|
-| buffer_store_dwordx2 (64-bit) | 20.00 | 2194.88 |
-| buffer_store_dwordx2 (64-bit) | 80.00 | 2184.48 |
-| buffer_store_dwordx2 (64-bit) | 100.00 | 2243.71 |
-| buffer_store_dwordx2 (64-bit) | 160.00 | 2248.34 |
+| buffer_store_dwordx2 (64-bit) | 20.00 | 2194.70 |
+| buffer_store_dwordx2 (64-bit) | 80.00 | 2188.45 |
+| buffer_store_dwordx2 (64-bit) | 100.00 | 2237.38 |
+| buffer_store_dwordx2 (64-bit) | 160.00 | 2237.97 |
 
 ### 128-bit Operations
 
 | Operation | Data Size (MB) | Bandwidth (GB/s) |
 |-----------|---------------:|----------------:|
-| buffer_store_dwordx4 (128-bit) | 20.00 | 1392.10 |
-| buffer_store_dwordx4 (128-bit) | 80.00 | 1350.10 |
-| buffer_store_dwordx4 (128-bit) | 100.00 | 1392.75 |
-| buffer_store_dwordx4 (128-bit) | 160.00 | 1392.05 |
+| buffer_store_dwordx4 (128-bit) | 20.00 | 1394.74 |
+| buffer_store_dwordx4 (128-bit) | 80.00 | 1393.28 |
+| buffer_store_dwordx4 (128-bit) | 100.00 | 1394.12 |
+| buffer_store_dwordx4 (128-bit) | 160.00 | 1394.36 |
 

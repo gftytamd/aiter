@@ -21,17 +21,17 @@
 
 | Operation | Data Size (MB) | Bandwidth (GB/s) |
 |-----------|---------------:|----------------:|
-| global_store_dwordx2_nt (64-bit) | 20.00 | 2225.61 |
-| global_store_dwordx2_nt (64-bit) | 80.00 | 2232.45 |
-| global_store_dwordx2_nt (64-bit) | 100.00 | 2263.06 |
-| global_store_dwordx2_nt (64-bit) | 160.00 | 2259.83 |
+| global_store_dwordx2_nt (64-bit) | 20.00 | 2224.61 |
+| global_store_dwordx2_nt (64-bit) | 80.00 | 2216.97 |
+| global_store_dwordx2_nt (64-bit) | 100.00 | 2247.65 |
+| global_store_dwordx2_nt (64-bit) | 160.00 | 2248.73 |
 
 ### 128-bit Operations
 
 | Operation | Data Size (MB) | Bandwidth (GB/s) |
 |-----------|---------------:|----------------:|
-| global_store_dwordx4_nt (128-bit) | 20.00 | 1395.57 |
-| global_store_dwordx4_nt (128-bit) | 80.00 | 1396.54 |
-| global_store_dwordx4_nt (128-bit) | 100.00 | 1394.44 |
-| global_store_dwordx4_nt (128-bit) | 160.00 | 945.48 |
+| global_store_dwordx4_nt (128-bit) | 20.00 | 1397.30 |
+| global_store_dwordx4_nt (128-bit) | 80.00 | 1397.44 |
+| global_store_dwordx4_nt (128-bit) | 100.00 | 1397.24 |
+| global_store_dwordx4_nt (128-bit) | 160.00 | 1395.92 |
 

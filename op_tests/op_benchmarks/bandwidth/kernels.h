@@ -76,6 +76,10 @@ __device__ dwordx4_t make_buffer_resource(const void * ptr, uint32_t size) {
     return __builtin_bit_cast(dwordx4_t, res);
 }
 
+__device__ __forceinline__ void do_global_load(float& reg, const float* addr) { 
+    asm volatile("global_load_dword %0, %1, off" : "=v"(reg) : "v"(addr) : "memory"); 
+}
+
 __device__ __forceinline__ void do_global_load(float2& reg, const float2* addr) { 
     asm volatile("global_load_dwordx2 %0, %1, off" : "=v"(reg) : "v"(addr) : "memory"); 
 }
@@ -160,17 +164,18 @@ __device__ __forceinline__ void do_lds_write(unsigned int offset, float4 reg){
     asm volatile("ds_write_b64 %0, %1" : : "v"(offset + 8), "v"(*((float2*)&reg + 1)) : "memory");
 }
 
+template <> __device__ __forceinline__ float consume<float>(const float& v) { return v; }
 template <> __device__ __forceinline__ float consume<float2>(const float2& v) { return v.x + v.y; }
 template <> __device__ __forceinline__ float consume<float4>(const float4& v) { return v.x + v.y + v.z + v.w; }
 
 
 // global_load_dword
-template <typename T, TestT type>
+template <typename T, TestT TestType>
 __global__ void global_load_kernel(const T* in_data, int num_elements_per_block, int iters, float* g_sum)
 {
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
     T temp_reg{};
-    using LocalSumT = std::conditional_t<type == TestT::Correctness, volatile float, float>;
+    using LocalSumT = std::conditional_t<TestType == TestT::Correctness, volatile float, float>;
     LocalSumT local_sum = 0.f;
     
     for (int i = 0; i < iters; ++i)
@@ -183,13 +188,12 @@ __global__ void global_load_kernel(const T* in_data, int num_elements_per_block,
             do_global_load(temp_reg, &in_data[aligned_offset]);
             local_sum += consume(temp_reg);
             offs += blockDim.x;
-            // off_reg[u] = aligned_offset;
             
         }
         asm volatile("s_waitcnt vmcnt(0)" ::: "memory");
     }
 
-    if constexpr(type == TestT::Correctness) {
+    if constexpr(TestType == TestT::Correctness) {
         const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
         g_sum[g_sum_offt] = local_sum;
     } else {
@@ -197,21 +201,17 @@ __global__ void global_load_kernel(const T* in_data, int num_elements_per_block,
             g_sum[0] = local_sum;
         }
     }
-    
-
-    
-    
 }
 
 // global_load_dword  nt
-template <typename T>
+template <typename T, TestT TestType>
 __global__ void global_load_nt_kernel(const T* in_data, int num_elements_per_block, int iters, float* g_sum)
 {
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
     
     T temp_reg{};
-    // float local_sum = 0.f;
-    volatile float local_sum = 0.f;
+    using LocalSumT = std::conditional_t<TestType == TestT::Correctness, volatile float, float>;
+    LocalSumT local_sum = 0.f;
 
     for (int i = 0; i < iters; ++i)
     {
@@ -226,12 +226,16 @@ __global__ void global_load_nt_kernel(const T* in_data, int num_elements_per_blo
         }
         asm volatile("s_waitcnt vmcnt(0)");
     }
-    const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-    g_sum[g_sum_offt] = local_sum;
-
-    // if (local_sum > 99999999.f) {
-    //     g_sum[0] = local_sum;
-    // }
+    // const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    // g_sum[g_sum_offt] = local_sum;
+    if constexpr(TestType == TestT::Correctness) {
+        const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+        g_sum[g_sum_offt] = local_sum;
+    } else {
+        if (local_sum > 99999999.f) {
+            g_sum[0] = local_sum;
+        }
+    }
 }
 
 // global_store_dword
@@ -288,13 +292,14 @@ __global__ void global_store_nt_kernel(T* out_data, int num_elements_per_block, 
 
 
 // buffer load 
-template <typename T>
+template <typename T, TestT TestType>
 __global__ void buffer_load_reg_kernel(const T* in_data, int num_elements_per_block, int iters, float* g_sum)
 {
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
     
     T temp_reg[UNROLL_FACTOR]{};
-    volatile float local_sum = 0.f;
+    using LocalSumT = std::conditional_t<TestType == TestT::Correctness, volatile float, float>;
+    LocalSumT local_sum = 0.f;
     
     dwordx4_t src_res = make_buffer_resource(in_data, 0xffffffff);
 
@@ -315,11 +320,14 @@ __global__ void buffer_load_reg_kernel(const T* in_data, int num_elements_per_bl
         }
     }
 
-    const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-    g_sum[g_sum_offt] = local_sum;
-    // if (local_sum > 99999999.f) {
-    //     g_sum[0] = local_sum;
-    // }
+    if constexpr(TestType == TestT::Correctness) {
+        const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+        g_sum[g_sum_offt] = local_sum;
+    } else {
+        if (local_sum > 99999999.f) {
+            g_sum[0] = local_sum;
+        }
+    }
 }
 
 // reg -> buffer, buffer_store_dword
@@ -383,7 +391,7 @@ __global__ void buffer_load_lds_kernel(const T* in_data, int num_elements_per_bl
 }
 
 
-template <typename T>
+template <typename T, TestT TestType>
 __global__ void lds_load_kernel(const T* in_data, int iters, float* g_sum)
 {
     extern __shared__ char lds_raw_data[];
@@ -392,7 +400,8 @@ __global__ void lds_load_kernel(const T* in_data, int iters, float* g_sum)
     const size_t tid = threadIdx.x;
  
     T temp_reg[UNROLL_FACTOR]{};
-    volatile float local_sum = 0.f;
+    using LocalSumT = std::conditional_t<TestType == TestT::Correctness, volatile float, float>;
+    LocalSumT local_sum = 0.f;
     
     for (int i = 0; i < iters; ++i)
     {
@@ -408,11 +417,14 @@ __global__ void lds_load_kernel(const T* in_data, int iters, float* g_sum)
         asm volatile("s_waitcnt lgkmcnt(0)");
     }
  
-    const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-    g_sum[g_sum_offt] = local_sum;
-    // if (local_sum > 99999999.f) {
-    //     g_sum[0] = local_sum;
-    // }
+    if constexpr(TestType == TestT::Correctness) {
+        const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+        g_sum[g_sum_offt] = local_sum;
+    } else {
+        if (local_sum > 99999999.f) {
+            g_sum[0] = local_sum;
+        }
+    }
 }
 
 template <typename T>
