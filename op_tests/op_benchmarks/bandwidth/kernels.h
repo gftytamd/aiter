@@ -43,6 +43,11 @@ enum class HFMemOp {
     DsWrite
 };
 
+enum class TestT {
+    Bandwidth,
+    Correctness
+};
+
 
 struct BenchmarkResult {
     std::string operation;   
@@ -164,58 +169,30 @@ template <typename T>
 __global__ void global_load_kernel(const T* in_data, int num_elements_per_block, int iters, float* g_sum)
 {
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
-    // T temp_reg{};
-    // float local_sum = 0.f;
+    T temp_reg{};
     volatile float local_sum = 0.f;
-    T temp_reg[UNROLL_FACTOR];
-    size_t off_reg[UNROLL_FACTOR]{};
-    // volatile float local_sum_unroll[UNROLL_FACTOR]{};
+    // float local_sum = 0.f;
     
     for (int i = 0; i < iters; ++i)
     {
         size_t offs = UNROLL_FACTOR * blockDim.x * i + threadIdx.x;
-        // T temp_reg[UNROLL_FACTOR];
-        // T temp_reg[UNROLL_FACTOR];
-        
-        // T temp_reg;
+
         #pragma unroll
         for (int u = 0; u < UNROLL_FACTOR; ++u) {
             size_t aligned_offset = (block_base_offset + offs) * sizeof(T) / sizeof(T);
-            // do_global_load(temp_reg[u], &in_data[0]);
-            // do_global_load(temp_reg, &in_data[0]);
-            do_global_load(temp_reg[u], &in_data[aligned_offset]);
-            // do_global_load(temp_reg, &in_data[aligned_offset]);
-            // local_sum += consume(temp_reg);
+            do_global_load(temp_reg, &in_data[aligned_offset]);
+            local_sum += consume(temp_reg);
             offs += blockDim.x;
-            off_reg[u] = aligned_offset;
+            // off_reg[u] = aligned_offset;
             
         }
         asm volatile("s_waitcnt vmcnt(0)" ::: "memory");
-        #pragma unroll
-        for (int u = 0; u < UNROLL_FACTOR; ++u) {
-            local_sum += consume(temp_reg[u]);
-            // local_sum += consume(temp_reg);
-            // local_sum_unroll[u] += consume(temp_reg[u]);
-        }
-        // asm volatile("s_waitcnt vmcnt(0)");
     }
-    // for (int u = 0; u < UNROLL_FACTOR; ++u) {
-    //     // local_sum += consume(temp_reg[u]);
-    //     local_sum += local_sum_unroll[u];
-    //     // local_sum += consume(temp_reg);
-    // }
-    // if((blockIdx.x == block_probe) && (threadIdx.x == thread_probe)) {
-    //     for (int u = 0; u < UNROLL_FACTOR; ++u) {
-    //         // printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
-    //         printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum);
-    //         // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
-    //     }
-    //     printf("%f %d\n", local_sum, num_elements_per_block);
-    // }
     const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     g_sum[g_sum_offt] = local_sum;
-    // if((blockIdx.x == 32) && (threadIdx.x == 128)) {
-    //     printf("%f %f %f %f %f %p\n", temp_reg.x, temp_reg.y, local_sum, in_data[0].x, in_data[0].y, in_data);
+
+    // if (local_sum > 99999999.f) {
+    //     g_sum[0] = local_sum;
     // }
     
 }
@@ -331,14 +308,7 @@ __global__ void buffer_load_reg_kernel(const T* in_data, int num_elements_per_bl
             local_sum += consume(temp_reg[u]);
         }
     }
-    if((blockIdx.x == block_probe) && (threadIdx.x == thread_probe)) {
-        for (int u = 0; u < UNROLL_FACTOR; ++u) {
-            // printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
-            printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum);
-            // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
-        }
-        printf("%f %d\n", local_sum, num_elements_per_block);
-    }
+
     const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     g_sum[g_sum_offt] = local_sum;
     // if (local_sum > 99999999.f) {
@@ -431,14 +401,7 @@ __global__ void lds_load_kernel(const T* in_data, int iters, float* g_sum)
         }
         asm volatile("s_waitcnt lgkmcnt(0)");
     }
-    if((blockIdx.x == block_probe) && (threadIdx.x == thread_probe)) {
-        for (int u = 0; u < UNROLL_FACTOR; ++u) {
-            // printf("%lu %f %f\n", off_reg[u], temp_reg[u].x, temp_reg[u].y);
-            printf("%f %f %f\n", temp_reg[u].x, temp_reg[u].y, local_sum);
-            // printf("%f %f %f\n", temp_reg.x, temp_reg.y, local_sum);
-        }
-        // printf("%f %d\n", local_sum, num_elements_per_block);
-    }
+ 
     const size_t g_sum_offt = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     g_sum[g_sum_offt] = local_sum;
     // if (local_sum > 99999999.f) {

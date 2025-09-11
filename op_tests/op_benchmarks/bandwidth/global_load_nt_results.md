@@ -1,4 +1,4 @@
-# Global Load (Cached) Bandwidth Test Results
+# Global Load Non-Temporal Bandwidth Test Results
 
 ## System Information
 
@@ -21,17 +21,17 @@
 
 | Operation | Data Size (MB) | Bandwidth (GB/s) |
 |-----------|---------------:|----------------:|
-| global_load_dwordx2 (64-bit) | 20.00 | 990.87 |
-| global_load_dwordx2 (64-bit) | 80.00 | 994.14 |
-| global_load_dwordx2 (64-bit) | 100.00 | 1093.53 |
-| global_load_dwordx2 (64-bit) | 160.00 | 795.98 |
+| global_load_dwordx2_nt (64-bit) | 20.00 | 894.41 |
+| global_load_dwordx2_nt (64-bit) | 80.00 | 894.96 |
+| global_load_dwordx2_nt (64-bit) | 100.00 | 992.30 |
+| global_load_dwordx2_nt (64-bit) | 160.00 | 991.79 |
 
 ### 128-bit Operations
 
 | Operation | Data Size (MB) | Bandwidth (GB/s) |
 |-----------|---------------:|----------------:|
-| global_load_dwordx4 (128-bit) | 20.00 | 1947.40 |
-| global_load_dwordx4 (128-bit) | 80.00 | 1946.67 |
-| global_load_dwordx4 (128-bit) | 100.00 | 1946.06 |
-| global_load_dwordx4 (128-bit) | 160.00 | 1945.63 |
+| global_load_dwordx4_nt (128-bit) | 20.00 | 1643.15 |
+| global_load_dwordx4_nt (128-bit) | 80.00 | 1652.03 |
+| global_load_dwordx4_nt (128-bit) | 100.00 | 1650.20 |
+| global_load_dwordx4_nt (128-bit) | 160.00 | 1651.78 |
 
