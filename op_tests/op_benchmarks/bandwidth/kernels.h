@@ -88,12 +88,20 @@ __device__ __forceinline__ void do_global_load(float4& reg, const float4* addr) 
     asm volatile("global_load_dwordx4 %0, %1, off" : "=v"(reg) : "v"(addr) : "memory"); 
 }
 
+__device__ __forceinline__ void do_global_load_nt(float& reg, const float* addr) { 
+    asm volatile("global_load_dword %0, %1, off nt" : "=v"(reg) : "v"(addr) : "memory"); 
+}
+
 __device__ __forceinline__ void do_global_load_nt(float2& reg, const float2* addr) { 
     asm volatile("global_load_dwordx2 %0, %1, off nt" : "=v"(reg) : "v"(addr) : "memory"); 
 }
 
 __device__ __forceinline__ void do_global_load_nt(float4& reg, const float4* addr) { 
     asm volatile("global_load_dwordx4 %0, %1, off nt" : "=v"(reg) : "v"(addr) : "memory"); 
+}
+
+__device__ __forceinline__ void do_global_store(float* addr, float reg) { 
+    asm volatile("global_store_dword %0, %1, off" : : "v"(addr), "v"(reg) : "memory"); 
 }
 
 __device__ __forceinline__ void do_global_store(float2* addr, float2 reg) { 
@@ -107,6 +115,10 @@ __device__ __forceinline__ void do_global_store(float4* addr, float4 reg) {
     // asm volatile("global_store_dwordx4 %0, %1, off" : : "v"(addr), "v"(reg) : "memory");
 }
 
+__device__ __forceinline__ void do_global_store_nt(float* addr, float reg) { 
+    asm volatile("global_store_dword %0, %1, off nt" : : "v"(addr), "v"(reg) : "memory"); 
+}
+
 __device__ __forceinline__ void do_global_store_nt(float2* addr, float2 reg) { 
     asm volatile("global_store_dwordx2 %0, %1, off nt" : : "v"(addr), "v"(reg) : "memory"); 
 }
@@ -117,6 +129,10 @@ __device__ __forceinline__ void do_global_store_nt(float4* addr, float4 reg) {
     asm volatile("global_store_dwordx2 %0, %1, off nt" : : "v"(((float2*)addr) + 1), "v"(*((float2*)&reg + 1)) : "memory");
 }
 
+__device__ void buffer_load(float& reg, dwordx4_t res, uint32_t v_offset, uint32_t s_offset, uint32_t i_offset = 0) {
+    asm volatile("buffer_load_dword %0, %1, %2, %3 offen offset:%4" 
+        : "=v"(reg) : "v"(v_offset), "s"(res), "s"(s_offset), "n"(i_offset) : "memory");
+}
 
 __device__ void buffer_load(float2& reg, dwordx4_t res, uint32_t v_offset, uint32_t s_offset, uint32_t i_offset = 0) {
     asm volatile("buffer_load_dwordx2 %0, %1, %2, %3 offen offset:%4" 
@@ -128,6 +144,10 @@ __device__ void buffer_load(float4& reg, dwordx4_t res, uint32_t v_offset, uint3
         : "=v"(reg) : "v"(v_offset), "s"(res), "s"(s_offset), "n"(i_offset) : "memory");
 }
 
+__device__ void buffer_store(const float& vdata, dwordx4_t res, uint32_t v_offset, uint32_t s_offset, uint32_t i_offset = 0) {
+    asm volatile("buffer_store_dword %0, %1, %2, %3 offen offset:%4" 
+                : : "v"(vdata), "v"(v_offset), "s"(res), "s"(s_offset), "n"(i_offset) : "memory");
+}
 
 __device__ void buffer_store(const float2& vdata, dwordx4_t res, uint32_t v_offset, uint32_t s_offset, uint32_t i_offset = 0) {
     asm volatile("buffer_store_dwordx2 %0, %1, %2, %3 offen offset:%4" 
@@ -244,7 +264,8 @@ __global__ void global_store_kernel(T* out_data, int num_elements_per_block, int
 {
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
     T reg{};
-    reg.x = 1.23f;
+    if constexpr (sizeof(T) == 4) reg = 1.23f;
+    else reg.x = 1.23f;
     if constexpr (sizeof(T) > 4)  reg.y = 2.34f;
     if constexpr (sizeof(T) > 8)  reg.z = 3.45f;
     if constexpr (sizeof(T) > 12) reg.w = 4.56f;
@@ -270,7 +291,8 @@ __global__ void global_store_nt_kernel(T* out_data, int num_elements_per_block, 
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
 
     T reg{};
-    reg.x = 1.23f;
+    if constexpr (sizeof(T) == 4) reg = 1.23f;
+    else reg.x = 1.23f;
     if constexpr (sizeof(T) > 4)  reg.y = 2.34f;
     if constexpr (sizeof(T) > 8)  reg.z = 3.45f;
     if constexpr (sizeof(T) > 12) reg.w = 4.56f;
@@ -337,7 +359,8 @@ __global__ void buffer_store_kernel(T* out_data, int num_elements_per_block, int
     const size_t block_base_offset = (size_t)blockIdx.x * num_elements_per_block;
 
     T reg{};
-    reg.x = 1.23f;
+    if constexpr (sizeof(T) == 4) reg = 1.23f;
+    else reg.x = 1.23f;
     if constexpr (sizeof(T) > 4)  reg.y = 2.34f;
     if constexpr (sizeof(T) > 8)  reg.z = 3.45f;
     if constexpr (sizeof(T) > 12) reg.w = 4.56f;
@@ -434,7 +457,8 @@ __global__ void lds_write_kernel(T* out_data,  int iters)
     T* lds_data = reinterpret_cast<T*>(lds_raw_data);
 
     T reg{};
-    reg.x = 1.23f;
+    if constexpr (sizeof(T) == 4) reg = 1.23f;
+    else reg.x = 1.23f;
     if constexpr (sizeof(T) > 4)  reg.y = 2.34f;
     if constexpr (sizeof(T) > 8)  reg.z = 3.45f;
     if constexpr (sizeof(T) > 12) reg.w = 4.56f;

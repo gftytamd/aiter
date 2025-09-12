@@ -3,6 +3,59 @@
 
 #include "kernels.h"
 
+// global kernel launcher
+template <typename T, TestT TestType>
+using KernelLauncher = std::function<void(T*, size_t, int, float*)>;
+
+// kernel mapper
+template <typename T, TestT TestType>
+std::unordered_map<HFMemOp, std::pair<KernelLauncher<T, TestType>, KernelLauncher<T, TestType>>> create_kernel_map(dim3 grid, dim3 block, int block_size) {
+    return {
+        {HFMemOp::GlobalLoad, {
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {global_load_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);},
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {global_load_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);},
+        }},
+        {HFMemOp::GlobalLoadNT, {
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {global_load_nt_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);},
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {global_load_nt_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);},
+        }},
+        {HFMemOp::GlobalStore, {
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);},
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);},
+        }},
+        {HFMemOp::GlobalStoreNT, {
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);},
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);},
+        }},
+        {HFMemOp::BufferStore, {
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);},
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);},
+        }},
+        {HFMemOp::BufferLoad, {
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {buffer_load_reg_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);},
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {buffer_load_reg_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);},
+        }},
+        {HFMemOp::BufferLoadLDS, {
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);},
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);},
+        }},
+        {HFMemOp::DsRead, {
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {
+                size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
+                lds_load_kernel<T, TestType><<<grid, block, lds_size_bytes>>>(d_data, iters, d_sum);
+            },
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {lds_load_kernel<T, TestType><<<grid, block>>>(d_data, iters, d_sum);},
+        }},
+        {HFMemOp::DsWrite, {
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {
+                size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
+                lds_write_kernel<T><<<grid, block, lds_size_bytes>>>(d_data, iters);
+            },
+            [=](T* d_data, size_t data_per_block, int iters, float* d_sum) {lds_write_kernel<T><<<grid, block>>>(d_data, iters);},
+        }}
+    };
+}
+
 template <typename T, HFMemOp Op, TestT TestType>
 BenchmarkResult run_benchmark_return_result(const std::string& test_name, int num_cu, int64_t data_size_dwords)
 {
@@ -43,15 +96,15 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
         compare_sum = (Op == HFMemOp::GlobalLoad) || (Op == HFMemOp::GlobalLoadNT) || (Op == HFMemOp::BufferLoad) || (Op == HFMemOp::DsRead);
         if (compare_sum) {
             // fixed input test
-            for (int i = 0; i < h_data.size(); ++i){
-                size_t block_id = i / (iters * block_size * UNROLL_FACTOR * stride_per_element);
-                h_data[i] = ( i % (block_size * stride_per_element) + 1) * (block_id+1);
-            }
+            // for (int i = 0; i < h_data.size(); ++i){
+            //     size_t block_id = i / (iters * block_size * UNROLL_FACTOR * stride_per_element);
+            //     h_data[i] = ( i % (block_size * stride_per_element) + 1) * (block_id+1);
+            // }
             // random input test
-            // std::random_device rd;
-            // std::mt19937 gen(rd());
-            // std::uniform_real_distribution<float> dist(0.0, 3.0);
-            // std::generate(h_data.begin(), h_data.end(), [&](){return dist(gen);});
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_real_distribution<float> dist(0.0, 3.0);
+            std::generate(h_data.begin(), h_data.end(), [&](){return dist(gen);});
         }
         else {
             const float ref_array[4] = {1.23f, 2.34f, 3.45f, 4.56f};
@@ -116,52 +169,59 @@ BenchmarkResult run_benchmark_return_result(const std::string& test_name, int nu
     dim3 grid(grid_size, 1, 1);
     dim3 block(block_size, 1, 1);
 
+    static const auto kernel_map = create_kernel_map<T, TestType>(grid, block, block_size);
+
+    auto [warmup_launcher, kernel_launcher] = kernel_map.at(Op);
+
     // warm up
     for(int i = 0; i < WARMUP; i++){
-        if (Op == HFMemOp::GlobalLoad) {
-            global_load_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-        } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
-            global_load_nt_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-        } else if constexpr (Op == HFMemOp::GlobalStore) {
-            global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::GlobalStoreNT) {
-            global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::BufferStore) {
-            buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::BufferLoad) {  
-            buffer_load_reg_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-         }else if constexpr (Op == HFMemOp::BufferLoadLDS) {
-            buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::DsRead) {    
-            size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
-            lds_load_kernel<T, TestType><<<grid, block, lds_size_bytes>>>(d_data,iters, d_sum);
-        } else if constexpr (Op == HFMemOp::DsWrite) { 
-            size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
-            lds_write_kernel<T><<<grid, block, lds_size_bytes>>>(d_data, iters);
-        }
+        // if (Op == HFMemOp::GlobalLoad) {
+        //     global_load_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+        // } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
+        //     global_load_nt_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+        // } else if constexpr (Op == HFMemOp::GlobalStore) {
+        //     global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::GlobalStoreNT) {
+        //     global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::BufferStore) {
+        //     buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::BufferLoad) {  
+        //     buffer_load_reg_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+        //  }else if constexpr (Op == HFMemOp::BufferLoadLDS) {
+        //     buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::DsRead) {    
+        //     size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
+        //     lds_load_kernel<T, TestType><<<grid, block, lds_size_bytes>>>(d_data,iters, d_sum);
+        // } else if constexpr (Op == HFMemOp::DsWrite) { 
+        //     size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
+        //     lds_write_kernel<T><<<grid, block, lds_size_bytes>>>(d_data, iters);
+        // }
+        warmup_launcher(d_data, data_per_block, iters, d_sum);
     }
 
     HIP_CHECK(hipEventRecord(start));
     for(int i = 0; i < LOOP; ++i) {
-        if (Op == HFMemOp::GlobalLoad) {
-            global_load_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-        } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
-            global_load_nt_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-        } else if constexpr (Op == HFMemOp::GlobalStore) {
-            global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::GlobalStoreNT) {
-            global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::BufferStore) {
-            buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::BufferLoad) {  
-            buffer_load_reg_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
-         }else if constexpr (Op == HFMemOp::BufferLoadLDS) {
-            buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
-        } else if constexpr (Op == HFMemOp::DsRead) {    
-            lds_load_kernel<T, TestType><<<grid, block>>>(d_data, iters, d_sum);
-        } else if constexpr (Op == HFMemOp::DsWrite) { 
-            lds_write_kernel<T><<<grid, block>>>(d_data,  iters);
-        }
+        // if (Op == HFMemOp::GlobalLoad) {
+        //     global_load_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+        // } else if constexpr (Op == HFMemOp::GlobalLoadNT) {
+        //     global_load_nt_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+        // } else if constexpr (Op == HFMemOp::GlobalStore) {
+        //     global_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::GlobalStoreNT) {
+        //     global_store_nt_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::BufferStore) {
+        //     buffer_store_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::BufferLoad) {  
+        //     buffer_load_reg_kernel<T, TestType><<<grid, block>>>(d_data, data_per_block, iters, d_sum);
+        //  }else if constexpr (Op == HFMemOp::BufferLoadLDS) {
+        //     buffer_load_lds_kernel<T><<<grid, block>>>(d_data, data_per_block, iters);
+        // } else if constexpr (Op == HFMemOp::DsRead) {    
+        //     size_t lds_size_bytes = block_size * UNROLL_FACTOR * sizeof(T);
+        //     lds_load_kernel<T, TestType><<<grid, block>>>(d_data, iters, d_sum);
+        // } else if constexpr (Op == HFMemOp::DsWrite) { 
+        //     lds_write_kernel<T><<<grid, block>>>(d_data,  iters);
+        // }
+        kernel_launcher(d_data, data_per_block, iters, d_sum);
     }
     HIP_CHECK(hipEventRecord(stop));
     HIP_CHECK(hipEventSynchronize(stop));
@@ -470,42 +530,31 @@ void run_all_tests(const std::string& test_name = "") {
     static_cast<int64_t>(20480) * num_cu * BLOCK_SIZE
     };
 
-    if (test_name.empty() || test_name == "global_load") {
-        run_global_load_test<TestType>(num_cu, data_sizes);
-    }
-    
-    if (test_name.empty() || test_name == "global_load_nt") {
-        run_global_load_nt_test<TestType>(num_cu, data_sizes);
-    }
-    
-    if (test_name.empty() || test_name == "global_store") {
-        run_global_store_test<TestType>(num_cu, data_sizes);
-    }
-    
-    if (test_name.empty() || test_name == "global_store_nt") {
-        run_global_store_nt_test<TestType>(num_cu, data_sizes);
-    }
-    
-    if (test_name.empty() || test_name == "buffer_load") {
-        run_buffer_load_test<TestType>(num_cu, data_sizes);
-    }
-    
-    if (test_name.empty() || test_name == "buffer_store") {
-        run_buffer_store_test<TestType>(num_cu, data_sizes);
-    }
-    
-    if (test_name.empty() || test_name == "buffer_load_lds") {
-        run_buffer_load_lds_test<TestType>(num_cu, data_sizes);
-    }
-    
-    if (test_name.empty() || test_name == "lds_read") {
-        run_lds_read_test<TestType>(num_cu, lds_data_sizes);
-    }
-    
-    if (test_name.empty() || test_name == "lds_write") {
-        run_lds_write_test<TestType>(num_cu, lds_data_sizes);
-    }
+    using TestFunction = std::function<std::vector<BenchmarkResult>(int, const std::vector<int64_t>&)>;
+    std::unordered_map<std::string, std::pair<TestFunction, std::vector<int64_t>*>> test_map = {
+        {"global_load",      {run_global_load_test<TestType>,      &data_sizes}},
+        {"global_load_nt",   {run_global_load_nt_test<TestType>,   &data_sizes}},
+        {"global_store",     {run_global_store_test<TestType>,     &data_sizes}},
+        {"global_store_nt",  {run_global_store_nt_test<TestType>,  &data_sizes}},
+        {"buffer_load",      {run_buffer_load_test<TestType>,      &data_sizes}},
+        {"buffer_store",     {run_buffer_store_test<TestType>,     &data_sizes}},
+        {"buffer_load_lds",  {run_buffer_load_lds_test<TestType>,  &data_sizes}},
+        {"lds_read",         {run_lds_read_test<TestType>,         &lds_data_sizes}},
+        {"lds_write",        {run_lds_write_test<TestType>,        &lds_data_sizes}}
+    };
 
+    if (test_name.empty()) {
+        for (auto& [name, func_data] : test_map) {
+            // std::cout << "Running test: " << name << std::endl;
+            func_data.first(num_cu, *func_data.second);
+        }
+    } 
+    else if (test_map.find(test_name) != test_map.end()) {
+        auto& [func, data_ptr] = test_map[test_name];
+        func(num_cu, *data_ptr);
+    } else {
+        std::cerr << "Error: Unknown test name '" << test_name << "'" << std::endl;
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -517,6 +566,35 @@ int main(int argc, char* argv[]) {
         };
     std::string test_name = "";
     bool correctness_check = false;
+
+    // 解析命令行参数
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        
+        if (arg == "-n" || arg == "--test_name") {
+            if (i + 1 < argc) {
+                test_name = argv[++i];
+                
+                // 验证测试名称有效性
+                if (std::find(valid_tests.begin(), valid_tests.end(), test_name) == valid_tests.end()) {
+                    std::cerr << "invalid test name: " << test_name << "'\n";
+                    std::cerr << "available test: ";
+                    for (const auto& name : valid_tests) {
+                        std::cerr << name << " ";
+                    }
+                    std::cerr << "\n";
+                    return 1;
+                }
+            } else {
+                std::cerr << "error " << arg << " specify test name!\n";
+                return 1;
+            }
+        }
+        else if (arg == "--correctness_test") {
+            correctness_check = true;
+        }
+    }
+
     if (correctness_check) {
         std::cout << "Correctness check on, bandwidth will be lower than peak value." << std::endl;
         run_all_tests<TestT::Correctness>(test_name);
