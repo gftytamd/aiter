@@ -16,10 +16,10 @@
 
 | Operation | Data Size (MB) | Bandwidth (GB/s) |
 |-----------|---------------:|----------------:|
-| buffer_load_dword (32-bit) | 20.00 | 3181.15 |
-| buffer_load_dword (32-bit) | 80.00 | 3378.18 |
-| buffer_load_dword (32-bit) | 100.00 | 3456.94 |
-| buffer_load_dword (32-bit) | 160.00 | 3494.51 |
+| buffer_load_dword (32-bit) | 20.00 | 3180.67 |
+| buffer_load_dword (32-bit) | 80.00 | 3376.82 |
+| buffer_load_dword (32-bit) | 100.00 | 3457.55 |
+| buffer_load_dword (32-bit) | 160.00 | 3494.57 |
 
 ### 64-bit Operations
 

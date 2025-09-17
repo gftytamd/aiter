@@ -1,5 +1,22 @@
 #pragma once
 
+#if defined (__gfx950__) || defined(__gfx940__)
+    #define TARGET_ARCH_SUPPORT_DWORDX4 1
+#else
+    #define TARGET_ARCH_SUPPORT_DWORDX4 0
+#endif
+
+#if defined (HIP_VERSION_MAJOR) && defined (HIP_VERSION_MINOR) && defined (HIP_VERSION_PATCH)
+    // #define HIP_VERSION ((HIP_VERSION_MAJOR * 10000000) + (HIP_VERSION_MINOR * 100000) + (HIP_VERSION_PATCH))
+    #define HIP_SUPPORT_DWORDX4 (HIP_VERSION >= 70100000)
+#else
+    #define HIP_SUPPORT_DWORDX4 0
+#endif
+
+#if TARGET_ARCH_SUPPORT_DWORDX4 && HIP_SUPPORT_DWORDX4
+    #define SUPPORT_DWORDX4
+#endif
+
 #include <hip/hip_runtime.h>
 #include <stdio.h>
 #include <stdexcept>
@@ -56,7 +73,7 @@ struct BenchmarkResult {
     double bandwidth_gb_s;  
 };
 
-
+typedef float Float4 __attribute__((ext_vector_type(4))); // cannot fix dwordx4 problem
 typedef uint32_t u32x4 __attribute__((ext_vector_type(4)));
 typedef u32x4 dwordx4_t;
 #define BUFFER_CONFIG 0x00020000
@@ -110,9 +127,13 @@ __device__ __forceinline__ void do_global_store(float2* addr, float2 reg) {
 
 // TODO:x4 store instruction not supported yet
 __device__ __forceinline__ void do_global_store(float4* addr, float4 reg) {
-    asm volatile("global_store_dwordx2 %0, %1, off" : : "v"((float2*)addr), "v"(*(float2*)&reg) : "memory");
-    asm volatile("global_store_dwordx2 %0, %1, off" : : "v"(((float2*)addr) + 1), "v"(*((float2*)&reg + 1)) : "memory");
-    // asm volatile("global_store_dwordx4 %0, %1, off" : : "v"(addr), "v"(reg) : "memory");
+    #ifdef SUPPORT_DWORDX4
+        asm volatile("global_store_dwordx4 %0, %1, off" : : "v"(addr), "v"(reg) : "memory");
+    #else
+        asm volatile("global_store_dwordx2 %0, %1, off" : : "v"((float2*)addr), "v"(*(float2*)&reg) : "memory");
+        asm volatile("global_store_dwordx2 %0, %1, off" : : "v"(((float2*)addr) + 1), "v"(*((float2*)&reg + 1)) : "memory");
+    #endif
+    
 }
 
 __device__ __forceinline__ void do_global_store_nt(float* addr, float reg) { 
@@ -125,8 +146,12 @@ __device__ __forceinline__ void do_global_store_nt(float2* addr, float2 reg) {
 
 // TODO:x4 store instruction not supported yet
 __device__ __forceinline__ void do_global_store_nt(float4* addr, float4 reg) {
-    asm volatile("global_store_dwordx2 %0, %1, off nt" : : "v"((float2*)addr), "v"(*(float2*)&reg) : "memory");
-    asm volatile("global_store_dwordx2 %0, %1, off nt" : : "v"(((float2*)addr) + 1), "v"(*((float2*)&reg + 1)) : "memory");
+    #ifdef SUPPORT_DWORDX4
+        asm volatile("global_store_dwordx2 %0, %1, off nt" : : "v"(addr), "v"(reg) : "memory");
+    #else
+        asm volatile("global_store_dwordx2 %0, %1, off nt" : : "v"((float2*)addr), "v"(*(float2*)&reg) : "memory");
+        asm volatile("global_store_dwordx2 %0, %1, off nt" : : "v"(((float2*)addr) + 1), "v"(*((float2*)&reg + 1)) : "memory");
+    #endif
 }
 
 __device__ void buffer_load(float& reg, dwordx4_t res, uint32_t v_offset, uint32_t s_offset, uint32_t i_offset = 0) {
@@ -156,10 +181,15 @@ __device__ void buffer_store(const float2& vdata, dwordx4_t res, uint32_t v_offs
 
 // TODO:x4 store instruction not supported yet
 __device__ void buffer_store(const float4& vdata, dwordx4_t res, uint32_t v_offset, uint32_t s_offset, uint32_t i_offset = 0) {
-    asm volatile("buffer_store_dwordx2 %0, %1, %2, %3 offen offset:%4" 
-                : : "v"(*(reinterpret_cast<const float2*>(&vdata))), "v"(v_offset), "s"(res), "s"(s_offset), "n"(i_offset) : "memory");
-    asm volatile("buffer_store_dwordx2 %0, %1, %2, %3 offen offset:%4" 
-                : : "v"(*(reinterpret_cast<const float2*>(&vdata) + 1)), "v"(v_offset + 8), "s"(res), "s"(s_offset), "n"(i_offset) : "memory");
+    #ifdef SUPPORT_DWORDX4
+        asm volatile("buffer_store_dwordx4 %0, %1, %2, %3 offen offset:%4" 
+                : : "v"(vdata), "v"(v_offset), "s"(res), "s"(s_offset), "n"(i_offset) : "memory");
+    #else
+        asm volatile("buffer_store_dwordx2 %0, %1, %2, %3 offen offset:%4" 
+                    : : "v"(*(reinterpret_cast<const float2*>(&vdata))), "v"(v_offset), "s"(res), "s"(s_offset), "n"(i_offset) : "memory");
+        asm volatile("buffer_store_dwordx2 %0, %1, %2, %3 offen offset:%4" 
+                    : : "v"(*(reinterpret_cast<const float2*>(&vdata) + 1)), "v"(v_offset + 8), "s"(res), "s"(s_offset), "n"(i_offset) : "memory");
+    #endif
 }
 
 // only supports dword
@@ -180,8 +210,12 @@ __device__ __forceinline__ void do_lds_write(unsigned int offset, float2 reg) { 
 
 // TODO:x4 store instruction not supported yet
 __device__ __forceinline__ void do_lds_write(unsigned int offset, float4 reg){
-    asm volatile("ds_write_b64 %0, %1" : : "v"(offset), "v"(*(float2*)&reg) : "memory");
-    asm volatile("ds_write_b64 %0, %1" : : "v"(offset + 8), "v"(*((float2*)&reg + 1)) : "memory");
+    #ifdef SUPPORT_DWORDX4
+        asm volatile("ds_write_b128 %0, %1" : : "v"(offset), "v"(reg) : "memory");
+    #else
+        asm volatile("ds_write_b64 %0, %1" : : "v"(offset), "v"(*(float2*)&reg) : "memory");
+        asm volatile("ds_write_b64 %0, %1" : : "v"(offset + 8), "v"(*((float2*)&reg + 1)) : "memory");
+    #endif
 }
 
 template <> __device__ __forceinline__ float consume<float>(const float& v) { return v; }
